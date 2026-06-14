@@ -41,7 +41,7 @@ export interface AcademicResult {
   level: SchoolLevel;
   subject: string;
   examLabel: string;
-  trimester: 1 | 2 | 3;
+  trimester: 1 | 2 | 3 | 4;
   score: number;
   coefficient?: number;
   recordedAt: string;

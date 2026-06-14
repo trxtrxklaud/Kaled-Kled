@@ -10,7 +10,7 @@ import HomeworkPage from "./pages/Homework";
 import NewsFeed from "./pages/NewsFeed";
 import EduservIntegration from "./pages/EduservIntegration";
 import Communication from "./pages/Communication";
-import Statistics from "./pages/Statistics";
+import Results from "./pages/Results";
 import CertificatesPage from "./pages/Certificates";
 import CertificateRegistryPage from "./pages/CertificateRegistry";
 import SchoolHeaderConfig from "./pages/SchoolHeaderConfig";
@@ -33,7 +33,7 @@ function App() {
           <Route path="/newsfeed" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><NewsFeed /></PrivateRoute>} />
           <Route path="/eduserv" element={<PrivateRoute allowedRoles={['admin', 'staff']}><EduservIntegration /></PrivateRoute>} />
           <Route path="/communication" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Communication /></PrivateRoute>} />
-          <Route path="/statistics" element={<PrivateRoute allowedRoles={['admin', 'staff']}><Statistics /></PrivateRoute>} />
+          <Route path="/results" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Results /></PrivateRoute>} />
           <Route path="/certificates" element={<PrivateRoute allowedRoles={['admin', 'staff']}><CertificatesPage /></PrivateRoute>} />
           <Route path="/certificate-registry" element={<PrivateRoute allowedRoles={['admin', 'staff']}><CertificateRegistryPage /></PrivateRoute>} />
           <Route path="/school-header" element={<PrivateRoute allowedRoles={['admin']}><SchoolHeaderConfig /></PrivateRoute>} />

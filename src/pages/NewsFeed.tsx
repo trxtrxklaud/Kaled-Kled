@@ -27,6 +27,7 @@ import { useData } from '../contexts/DataContext';
 import type { Post } from '../lib/types';
 import { toast } from 'sonner';
 import { Lightbox } from '../components/ui/lightbox';
+import { getAvatarUrl } from '../lib/utils';
 
 const CLASSES = ['1A', '1B', '2A', '2B', '3A', '3B', '4A', '5A', '6A'];
 const AUDIENCE_OPTIONS = ['Tout le monde', 'Enseignants', 'Parents', 'Classes spécifiques'];
@@ -339,7 +340,7 @@ const NewsFeed: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden ring-1 ring-slate-200">
                       <img 
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.author}`} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
+                        src={getAvatarUrl(post.author, 'employee')} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
                         alt={post.author} 
                         className="w-full h-full object-cover" 
                       />
@@ -463,7 +464,7 @@ const NewsFeed: React.FC = () => {
                       <div key={comment.id} className="flex gap-3">
                         <div className="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 mt-0.5 overflow-hidden">
                           <img 
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.author}`} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
+                            src={getAvatarUrl(comment.author, 'employee')} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
                             alt="" 
                             className="w-full h-full" 
                           />

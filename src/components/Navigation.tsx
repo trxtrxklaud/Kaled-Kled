@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserRound, BookOpen, MessageSquare, PieChart, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School } from 'lucide-react';
+import { LayoutDashboard, Users, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,7 +11,7 @@ interface NavigationProps {
 }
 
 const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { canAccessFinance, canModifySystem } = useAuth();
   
   const navItems = [
@@ -19,11 +19,11 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
     { icon: Users, label: t('students'), path: '/students' },
     { icon: UserRound, label: t('employees'), path: '/employees' },
     { icon: BookOpen, label: t('schedules'), path: '/schedules' },
+    { icon: Trophy, label: isRTL ? 'النتائج' : 'Résultats', path: '/results' },
     { icon: FileText, label: t('homework'), path: '/homework' },
     { icon: MessageCircle, label: t('news_feed'), path: '/newsfeed' },
     { icon: RefreshCw, label: t('eduserv'), path: '/eduserv' },
     { icon: MessageSquare, label: t('communication'), path: '/communication' },
-    { icon: PieChart, label: t('statistics'), path: '/statistics' },
     { icon: FileBadge, label: t('certificates'), path: '/certificates' },
     { icon: Files, label: t('certificate_registry'), path: '/certificate-registry' },
   ];

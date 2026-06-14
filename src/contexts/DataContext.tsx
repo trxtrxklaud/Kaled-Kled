@@ -214,19 +214,21 @@ interface DataContextType {
   academicAssets: AcademicAsset[];
   addAcademicAsset: (asset: Omit<AcademicAsset, 'id'>) => void;
   removeAcademicAsset: (id: string) => void;
-  addStudent: (student: Omit<Student, 'id'>) => void;
+  addStudent: (student: Omit<Student, 'id'> & { id?: string }) => void;
   updateStudent: (student: Student) => void;
   deleteStudent: (id: string) => void;
-  importStudents: (data: ImportStudentData[]) => void;
+  importStudents: (data: ImportStudentData[], defaultClass?: string) => void;
   addAcademicResult: (result: Omit<AcademicResult, 'id' | 'level'>) => void;
   updateAcademicResult: (result: AcademicResult) => void;
   updateAcademicResults: (results: AcademicResult[]) => void;
   importAcademicResults: (data: ImportAcademicResultData[]) => void;
   deleteAcademicResult: (id: string) => void;
   deleteAcademicResults: (ids: string[]) => void;
-  addEmployee: (employee: Omit<Employee, 'id'>) => void;
+  addEmployee: (employee: Omit<Employee, 'id'> & { id?: string }) => void;
   updateEmployee: (employee: Employee) => void;
   deleteEmployee: (id: string) => void;
+  deleteEmployees: (ids: string[]) => void;
+  importEmployees: (data: any[]) => void;
   addExam: (exam: Omit<Exam, 'id'>) => void;
   importExams: (data: ImportExamScheduleData[]) => void;
   deleteExam: (id: string) => void;
@@ -433,13 +435,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => safeSetItem('providence_posts', posts), [posts]);
   useEffect(() => safeSetItem('providence_academic_assets', academicAssets), [academicAssets]);
 
-  const addStudent = (student: Omit<Student, 'id'>) => {
-    const newStudent = { ...student, id: crypto.randomUUID() };
-    setStudents(prev => [...prev, newStudent].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+  const addStudent = (student: Omit<Student, 'id'> & { id?: string }) => {
+    const newStudent = { ...student, id: student.id || crypto.randomUUID() } as Student;
+    setStudents(prev => [...prev, newStudent].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
   };
 
   const updateStudent = (student: Student) => {
-    setStudents(prev => prev.map(s => s.id === student.id ? student : s).sort((a, b) => a.fullName.localeCompare(b.fullName)));
+    setStudents(prev => prev.map(s => s.id === student.id ? student : s).sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
   };
 
   const deleteStudent = (id: string) => {
@@ -447,17 +449,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAcademicResults(prev => prev.filter(result => result.studentId !== id));
   };
 
-  const importStudents = (data: ImportStudentData[]) => {
-    const newStudents = data.map(item => ({
-      id: crypto.randomUUID(),
-      fullName: item.full_name || item.fullName || '',
-      class: item.class || '',
-      birthDate: item.birth_date || item.birthDate || '',
-      parentName: item.parent_name || item.parentName || '',
-      parentPhone: item.parent_phone || item.parentPhone || '',
-      notes: item.notes || '',
-    }));
-    setStudents(prev => [...prev, ...newStudents].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+  const importStudents = (data: any[], defaultClass?: string) => {
+    const findValue = (obj: any, keys: string[]) => {
+      const foundKey = Object.keys(obj).find(k => 
+        keys.some(key => k.toLowerCase().includes(key.toLowerCase()))
+      );
+      return foundKey ? obj[foundKey] : undefined;
+    };
+
+    const newStudents = data.map(item => {
+      // Provide wide compatibility for columns
+      const fullName = item.full_name || item.fullName || findValue(item, ['اسم', 'الاسم', 'nom', 'prénom', 'name']) || '';
+      let className = item.class || findValue(item, ['قسم', 'القسم', 'صف', 'الصف', 'classe', 'grade']) || '';
+      const birthDate = item.birth_date || item.birthDate || findValue(item, ['تاريخ', 'ولادة', 'ميلاد', 'date', 'naissance', 'birth']) || '';
+      const parentName = item.parent_name || item.parentName || findValue(item, ['ولي', 'أب', 'parent']) || '';
+      const parentPhone = item.parent_phone || item.parentPhone || findValue(item, ['هاتف', 'رقم', 'téléphone', 'tel', 'phone']) || '';
+      const notes = item.notes || findValue(item, ['ملاحظة', 'ملاحظات', 'note', 'remarque']) || '';
+
+      // Set fallback class if available
+      if (!className && defaultClass) {
+        className = defaultClass;
+      }
+
+      // Skip empty rows
+      if (!fullName) return null;
+
+      return {
+        id: crypto.randomUUID(),
+        fullName: String(fullName),
+        class: String(className),
+        birthDate: String(birthDate),
+        parentName: String(parentName),
+        parentPhone: String(parentPhone),
+        notes: String(notes),
+      };
+    }).filter(Boolean) as Student[]; // filter out nulls where name was empty
+
+    setStudents(prev => [...prev, ...newStudents].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
   };
 
   const normalizeAcademicResult = (result: AcademicResult): AcademicResult | null => {
@@ -628,7 +656,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Actually add students synchronously to memory (IDB syncs later)
     if (newStudents.length > 0) {
-      setStudents(prev => [...prev, ...newStudents].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+      setStudents(prev => [...prev, ...newStudents].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
     }
     
     // Helper function to process in chunks
@@ -668,8 +696,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     toast.success(`${ids.length} résultats académiques supprimés`);
   };
 
-  const addEmployee = (employee: Omit<Employee, 'id'>) => {
-    const newEmployee = { ...employee, id: crypto.randomUUID() };
+  const addEmployee = (employee: Omit<Employee, 'id'> & { id?: string }) => {
+    const newEmployee = { ...employee, id: employee.id || crypto.randomUUID() } as Employee;
     setEmployees(prev => [...prev, newEmployee]);
   };
 
@@ -679,6 +707,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteEmployee = (id: string) => {
     setEmployees(prev => prev.filter(e => e.id !== id));
+  };
+
+  const deleteEmployees = (ids: string[]) => {
+    const idsToDelete = new Set(ids);
+    setEmployees(prev => prev.filter(e => !idsToDelete.has(e.id)));
+  };
+
+  const importEmployees = (data: any[]) => {
+    const findValue = (obj: any, keys: string[]) => {
+      const foundKey = Object.keys(obj).find(k => 
+        keys.some(key => k.toLowerCase().includes(key.toLowerCase()))
+      );
+      return foundKey ? obj[foundKey] : undefined;
+    };
+
+    const newEmployees = data.map(item => {
+      const fullName = item.fullName || item.full_name || findValue(item, ['اسم', 'الاسم', 'nom', 'prénom', 'name']) || '';
+      const role = item.role || item.poste || findValue(item, ['دور', 'مهمة', 'وظيفة', 'role', 'poste', 'title']) || '';
+      const typeStr = item.type || item.category || findValue(item, ['نوع', 'فئة', 'صنف', 'type', 'catégorie', 'category']) || 'Teacher';
+      const phone = item.phone || item.telephone || findValue(item, ['هاتف', 'رقم', 'téléphone', 'tel', 'phone']) || '';
+
+      if (!fullName) return null;
+
+      // Determine correct type
+      let type: 'Teacher' | 'Administration' | 'Security' | 'Other' = 'Other';
+      const t = String(typeStr).toLowerCase();
+      if (t.includes('teach') || t.includes('prof') || t.includes('أستاذ') || t.includes('معلم')) type = 'Teacher';
+      else if (t.includes('admin') || t.includes('إدارة') || t.includes('مدير') || t.includes('gestion')) type = 'Administration';
+      else if (t.includes('sec') || t.includes('أمن') || t.includes('حارس') || t.includes('gard')) type = 'Security';
+
+      return {
+        id: crypto.randomUUID(),
+        fullName: String(fullName),
+        role: String(role),
+        type,
+        phone: String(phone),
+      };
+    }).filter(Boolean) as Employee[];
+
+    setEmployees(prev => [...prev, ...newEmployees].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
   };
 
   const addExam = (exam: Omit<Exam, 'id'>) => {
@@ -1098,7 +1166,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       students, academicResults, employees, exams, announcements, news, messages, emailDeliveryLogs, schoolBranding, certificateRegistry, weeklySchedule, weeklyScheduleLocks, timetableActionLogs, classTimetableImages, statisticsFilterPresets, eduservSyncLogs, appPreferences, authSessionUser, timetables, examPlanningFiles, attendance, financeArrears,
       addStudent, updateStudent, deleteStudent, importStudents,
       addAcademicResult, updateAcademicResult, updateAcademicResults, importAcademicResults, deleteAcademicResult, deleteAcademicResults,
-      addEmployee, updateEmployee, deleteEmployee,
+      addEmployee, updateEmployee, deleteEmployee, deleteEmployees, importEmployees,
       addExam, importExams, deleteExam,
       addAnnouncement, deleteAnnouncement,
       addNews, deleteNews,

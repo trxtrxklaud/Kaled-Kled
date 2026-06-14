@@ -18,7 +18,9 @@ import {
   Printer,
   Phone,
   MessageCircle,
-  FileText
+  FileText,
+  Undo2,
+  Save
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -33,9 +35,18 @@ import {
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
-import { safeOpenExternalLink, triggerPrint } from '../lib/utils';
+import { printHtmlContent, getAvatarUrl } from '../lib/utils';
 import type { AttendanceRecord, Student, Homework } from '../lib/types';
 import * as XLSX from '../lib/xlsx';
+
+const stringToColor = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0, 6 - c.length).concat(c);
+};
 
 // Expanded to 5 sections per grade (A-E)
 const CLASSES = [
@@ -60,6 +71,59 @@ const Students: React.FC = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<Student | null>(null);
+  const [deletedStack, setDeletedStack] = useState<Student[][]>([]);
+
+  const handleUndo = () => {
+    if (deletedStack.length === 0) return;
+    const lastDeleted = deletedStack[deletedStack.length - 1];
+    setDeletedStack(prev => prev.slice(0, -1));
+    lastDeleted.forEach(student => {
+      addStudent(student);
+    });
+    toast.success(isRTL ? 'تم التراجع بنجاح' : 'Annulation réussie');
+  };
+
+  const handleSaveData = async () => {
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(filteredStudents.map(s => ({
+        'Nom et Prénom': s.fullName,
+        'Classe': s.class,
+        'Date de Naissance': s.birthDate || '',
+        'Parent': s.parentName || '',
+        'Téléphone': s.parentPhone || ''
+      })));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Élèves");
+      
+      const defaultFilename = selectedClass ? `Liste_Eleves_${selectedClass}.xlsx` : "Liste_Eleves.xlsx";
+
+      if ('showSaveFilePicker' in window) {
+        const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // @ts-ignore
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'Fichier Excel',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+          }],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
+      } else {
+        XLSX.writeFile(workbook, defaultFilename);
+        toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error(error);
+        toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
+      }
+    }
+  };
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -69,6 +133,7 @@ const Students: React.FC = () => {
     parentPhone: '',
     notes: ''
   });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filter classes based on teacher's assigned classes
   const visibleClasses = isTeacher ? assignedClasses : CLASSES;
@@ -79,6 +144,34 @@ const Students: React.FC = () => {
                           (s.parentName ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesClass && matchesSearch;
   });
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredStudents.length && filteredStudents.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredStudents.map(s => s.id)));
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    const idsToDelete = Array.from(selectedIds);
+    const toDelete = students.filter(s => idsToDelete.includes(s.id));
+    setDeletedStack(prev => [...prev, toDelete]);
+    idsToDelete.forEach(id => deleteStudent(id));
+    setSelectedIds(new Set());
+    toast.success(isRTL ? 'تم الحذف بنجاح' : 'Supprimé avec succès');
+  };
 
   const getTodayAttendance = (studentId: string) => {
     const today = new Date().toISOString().split('T')[0];
@@ -91,9 +184,7 @@ const Students: React.FC = () => {
   };
 
   const handlePrintStudent = (student: Student) => {
-    const printWindow = window.open('', '', 'height=600,width=800');
-    if (printWindow) {
-      printWindow.document.write(`
+    const html = `
         <html><head><title>Rapport - ${student.fullName}</title>
         <style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #1a237e; } .info { margin: 10px 0; } </style>
         </head><body>
@@ -106,17 +197,8 @@ const Students: React.FC = () => {
         <div class="info"><strong>Notes:</strong> ${student.notes || 'Aucune'}</div>
         <p style="margin-top: 40px; font-size: 12px; color: #666;">Imprimé le ${new Date().toLocaleDateString()} - Complexe la Providence</p>
         </body></html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        try {
-          printWindow.print();
-        } catch {
-          toast.error("Print blocked. Open app in new tab.");
-        }
-      }, 250);
-    }
+      `;
+    printHtmlContent(html, `Rapport_${student.fullName}`);
     toast.success(t('print_export') || 'Rapport imprimé');
   };
 
@@ -124,15 +206,39 @@ const Students: React.FC = () => {
     setSelectedStudentForDetail(student);
   };
 
-  const handleCall = (phone?: string) => {
-    if (phone) safeOpenExternalLink(`tel:${phone}`);
+  const normalizePhoneNumber = (phone: string): string => {
+    let normalized = phone.replace(/[\s\-()]/g, '');
+    if (normalized.startsWith('00')) {
+      normalized = '+' + normalized.substring(2);
+    }
+    if (!normalized.startsWith('+') && normalized.length > 0) {
+      normalized = '+216' + (normalized.startsWith('0') ? normalized.substring(1) : normalized);
+    }
+    return normalized;
   };
 
-  const handleWhatsApp = (phone?: string) => {
-    if (!phone) return;
-    const cleanPhone = phone.replace(/\D/g, '');
-    const fullPhone = cleanPhone.startsWith('0') ? '212' + cleanPhone.substring(1) : cleanPhone;
-    safeOpenExternalLink(`https://wa.me/${fullPhone}`);
+  const handleCall = (e: React.MouseEvent, phone?: string) => {
+    e.stopPropagation();
+    if (!phone) {
+      toast.error('Aucun numéro de téléphone disponible');
+      return;
+    }
+    const normalized = normalizePhoneNumber(phone);
+    window.location.href = `tel:${normalized}`;
+  };
+
+  const handleWhatsApp = (e: React.MouseEvent, phone?: string, _parentName?: string, studentName?: string) => {
+    e.stopPropagation();
+    if (!phone) {
+      toast.error('Aucun numéro de téléphone disponible');
+      return;
+    }
+    let normalized = normalizePhoneNumber(phone);
+    if (normalized.startsWith('+')) {
+       normalized = normalized.substring(1);
+    }
+    const message = encodeURIComponent(`Bonjour, nous vous contactons concernant votre enfant ${studentName || ''}.`);
+    window.open(`https://wa.me/${normalized}?text=${message}`, '_blank');
   };
 
 
@@ -161,9 +267,10 @@ const Students: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm(t('confirm_delete'))) {
-      deleteStudent(id);
-    }
+    const toDelete = students.find(s => s.id === id);
+    if (toDelete) setDeletedStack(prev => [...prev, [toDelete]]);
+    deleteStudent(id);
+    toast.success(isRTL ? 'تم الحذف بنجاح' : 'Supprimé avec succès');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,7 +302,7 @@ const Students: React.FC = () => {
         });
         
         if (rows.length > 0) {
-          importStudents(rows as ImportStudentData[]);
+          importStudents(rows as ImportStudentData[], selectedClass || undefined);
           toast.success(t('success_import'));
           setIsImportDialogOpen(false);
         } else {
@@ -212,7 +319,7 @@ const Students: React.FC = () => {
             const data = XLSX.utils.sheet_to_json(ws);
             
             if (data.length > 0) {
-              importStudents(data as ImportStudentData[]);
+              importStudents(data as ImportStudentData[], selectedClass || undefined);
               toast.success(t('success_import'));
               setIsImportDialogOpen(false);
             } else {
@@ -224,13 +331,94 @@ const Students: React.FC = () => {
         };
         reader.readAsBinaryString(file);
       }
-    } catch (err) {
+    } catch {
       toast.error(t('error_import'));
+    } finally {
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
   const handlePrint = () => {
-    triggerPrint();
+    // Sort students by class, then by name
+    const studentsToPrint = [...filteredStudents].sort((a, b) => {
+      const classCompare = (a.class || '').localeCompare(b.class || '', undefined, { numeric: true, sensitivity: 'base' });
+      if (classCompare !== 0) return classCompare;
+      return (a.fullName || '').localeCompare(b.fullName || '');
+    });
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="${isRTL ? 'rtl' : 'ltr'}">
+      <head>
+        <title>${selectedClass ? `Liste des élèves - ${selectedClass}` : 'Liste des élèves'}</title>
+        <meta charset="utf-8" />
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: white; 
+            color: #000; 
+            direction: ${isRTL ? 'rtl' : 'ltr'};
+          }
+          h1 { color: #1a237e; text-align: center; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+          th, td { border: 1px solid #ddd; padding: 10px; text-align: ${isRTL ? 'right' : 'left'}; }
+          th { background-color: #f8fafc; color: #334155; font-weight: bold; }
+          tr:nth-child(even) { background-color: #f1f5f9; }
+          .class-header { background-color: #e2e8f0 !important; font-weight: bold; text-align: center !important; font-size: 16px; }
+          .footer { margin-top: 40px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <h1>${selectedClass ? (isRTL ? `قائمة التلاميذ - قسم ${selectedClass}` : `Liste des élèves - Classe ${selectedClass}`) : (isRTL ? 'القائمة العامة للتلاميذ' : 'Liste globale des élèves')}</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>${isRTL ? 'الاسم واللقب' : 'Nom et Prénom'}</th>
+              <th>${isRTL ? 'القسم' : 'Classe'}</th>
+              <th>${isRTL ? 'تاريخ الولادة' : 'Date de naissance'}</th>
+              <th>${isRTL ? 'اسم الولي' : 'Nom du parent'}</th>
+              <th>${isRTL ? 'رقم الهاتف' : 'Téléphone'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${studentsToPrint.map((student: Student, index: number) => {
+              const prevStudent = index > 0 ? studentsToPrint[index - 1] : null;
+              const showClassHeader = !selectedClass && (!prevStudent || prevStudent.class !== student.class);
+              
+              let rowHtml = '';
+              if (showClassHeader) {
+                rowHtml += `
+                  <tr>
+                    <td colspan="5" class="class-header">
+                      ${isRTL ? 'قسم' : 'Classe'} ${student.class || (isRTL ? 'غير محدد' : 'Non assignée')}
+                    </td>
+                  </tr>
+                `;
+              }
+              
+              rowHtml += `
+                <tr>
+                  <td style="font-weight: bold;">${student.fullName}</td>
+                  <td>${student.class}</td>
+                  <td>${student.birthDate || '-'}</td>
+                  <td>${student.parentName || '-'}</td>
+                  <td style="direction: ltr; text-align: ${isRTL ? 'right' : 'left'};">${student.parentPhone || '-'}</td>
+                </tr>
+              `;
+              return rowHtml;
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          ${isRTL ? 'طبع يوم' : 'Imprimé le'} ${new Date().toLocaleDateString('fr-FR')} - Complexe la Providence
+        </div>
+      </body>
+      </html>
+    `;
+    printHtmlContent(html, selectedClass ? `Liste_Eleves_${selectedClass}` : 'Liste_Eleves');
   };
 
   const resetForm = () => {
@@ -260,6 +448,40 @@ const Students: React.FC = () => {
           </h2>
         </div>
         <div className="flex gap-2">
+          {deletedStack.length > 0 && (
+            <Button 
+              variant="outline" 
+              className="h-10 sm:h-11 px-4 rounded-full border-blue-200 text-blue-700 hover:bg-blue-50 shadow-sm font-semibold text-xs"
+              onClick={handleUndo}
+            >
+              <Undo2 className="w-4 h-4 mr-2" /> {isRTL ? 'تراجع' : 'Annuler'}
+            </Button>
+          )}
+          <Button 
+            variant="outline" 
+            className="h-10 sm:h-11 px-4 rounded-full border-green-200 text-green-700 hover:bg-green-50 shadow-sm font-semibold text-xs"
+            onClick={handleSaveData}
+          >
+            <Save className="w-4 h-4 mr-2" /> {isRTL ? 'إسترجاع و تحديث المعطيات' : 'Enregistrer'}
+          </Button>
+          {canModify && selectedIds.size > 0 && (
+            <Button 
+              variant="destructive" 
+              className="h-10 sm:h-11 px-4 rounded-full shadow-sm font-semibold text-xs"
+              onClick={handleBulkDelete}
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> {selectedIds.size}
+            </Button>
+          )}
+          {canModify && (
+            <Button 
+              variant={selectedIds.size === filteredStudents.length && filteredStudents.length > 0 ? "secondary" : "outline"} 
+              className="h-10 sm:h-11 px-4 rounded-full border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm font-semibold text-xs"
+              onClick={handleSelectAll}
+            >
+              {selectedIds.size === filteredStudents.length && filteredStudents.length > 0 ? (isRTL ? 'إلغاء التحديد' : 'Désélectionner tout') : (isRTL ? 'تحديد الكل' : 'Sélectionner tout')}
+            </Button>
+          )}
           {/* Print Button - Visible to all */}
           <Button 
             variant="outline" 
@@ -366,6 +588,19 @@ const Students: React.FC = () => {
               ) : (
                 filteredStudents.map((student) => {
                   const todayPresent = getTodayAttendance(student.id);
+                  let touchTimer: ReturnType<typeof setTimeout>;
+
+                  const handlePointerDown = () => {
+                    if (!canModify) return;
+                    touchTimer = setTimeout(() => {
+                      handleDelete(student.id);
+                    }, 800);
+                  };
+
+                  const handlePointerUp = () => {
+                    if (touchTimer) clearTimeout(touchTimer);
+                  };
+
                   return (
                   <motion.div
                     key={student.id}
@@ -374,15 +609,28 @@ const Students: React.FC = () => {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                   >
-                    <Card className="border border-slate-100 shadow-sm rounded-3xl overflow-hidden group hover:shadow-md transition-all bg-white cursor-pointer" onClick={() => openStudentDetail(student)}>
-                      <CardContent className="p-4 sm:p-5 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 font-bold text-xl overflow-hidden">
-                             <img 
-                               src={`https://api.dicebear.com/7.x/initials/svg?seed=${student.fullName}`} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
-                               alt="" 
-                               className="w-full h-full object-cover mix-blend-multiply opacity-80" 
-                             />
+                    <Card 
+                      className={`border shadow-sm rounded-3xl overflow-hidden group hover:shadow-md transition-all outline-none ${selectedIds.has(student.id) ? 'border-primary/40 bg-primary/5 ring-2 ring-primary/20' : 'border-slate-100 bg-white'}`}
+                      onClick={() => openStudentDetail(student)}
+                      onPointerDown={handlePointerDown}
+                      onPointerUp={handlePointerUp}
+                      onPointerLeave={handlePointerUp}
+                      style={{ touchAction: 'pan-y' }}
+                    >
+                      <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start sm:items-center gap-4">
+                          {canModify && (
+                            <div className="flex items-center justify-center">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedIds.has(student.id)}
+                                onChange={() => toggleSelection(student.id)}
+                                className="w-5 h-5 rounded-md border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                              />
+                            </div>
+                          )}
+                          <div className="w-14 h-14 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 font-bold text-xl overflow-hidden flex-shrink-0">
+                             <img src={getAvatarUrl(student.fullName, 'student')} alt="" className="w-full h-full object-cover pointer-events-none" />
                           </div>
                           <div>
                             <h4 className="font-bold text-slate-900 text-base">{student.fullName}</h4>
@@ -390,10 +638,30 @@ const Students: React.FC = () => {
                                <p className="text-xs font-medium text-slate-500">{t('parents')}: <span className="text-slate-700">{student.parentName}</span></p>
                                <Badge variant="outline" className="text-[10px] font-semibold h-5 px-1.5 rounded bg-slate-50 text-slate-600 border-slate-200">{student.class}</Badge>
                             </div>
+                            {student.parentPhone && (
+                              <div className="flex flex-wrap items-center gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-10 px-4 rounded-xl text-green-700 bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300 font-bold shadow-sm"
+                                  onClick={(e) => handleWhatsApp(e, student.parentPhone, student.parentName, student.fullName)}
+                                >
+                                  <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-10 px-4 rounded-xl text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300 font-bold shadow-sm"
+                                  onClick={(e) => handleCall(e, student.parentPhone)}
+                                >
+                                  <Phone className="w-4 h-4 mr-2" /> Appeler
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2 sm:self-center self-end" onClick={(e) => e.stopPropagation()}>
                           {isTeacher ? (
                             <div className="flex gap-1">
                               <Button 
@@ -574,12 +842,8 @@ const Students: React.FC = () => {
                 >
                   <ChevronRight className={`w-5 h-5 ${isRTL ? 'rotate-180' : ''}`} />
                 </Button>
-                <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-300 font-bold text-3xl shadow-sm overflow-hidden mb-4">
-                  <img 
-                    src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedStudentForDetail.fullName}`} onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
-                    alt="" 
-                    className="w-full h-full object-cover mix-blend-multiply opacity-80" 
-                  />
+                <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-300 font-bold text-3xl shadow-sm overflow-hidden mb-4 p-1.5">
+                  <div style={{ backgroundColor: stringToColor(selectedStudentForDetail.fullName) }} className="w-full h-full rounded-full opacity-80" />
                 </div>
                 <h3 className="font-bold text-xl text-slate-900">{selectedStudentForDetail.fullName}</h3>
                 <Badge variant="outline" className="mt-2 bg-white text-slate-600 border-slate-200 px-3">{selectedStudentForDetail.class}</Badge>
@@ -641,14 +905,14 @@ const Students: React.FC = () => {
                   <Button 
                     variant="outline" 
                     className="rounded-full bg-green-50 border-transparent text-green-700 hover:bg-green-100 font-medium" 
-                    onClick={() => handleWhatsApp(selectedStudentForDetail.parentPhone)}
+                    onClick={(e) => handleWhatsApp(e, selectedStudentForDetail.parentPhone, selectedStudentForDetail.parentName, selectedStudentForDetail.fullName)}
                   >
                     <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
                   </Button>
                   <Button 
                     variant="outline" 
                     className="rounded-full bg-blue-50 border-transparent text-blue-700 hover:bg-blue-100 font-medium" 
-                    onClick={() => handleCall(selectedStudentForDetail.parentPhone)}
+                    onClick={(e) => handleCall(e, selectedStudentForDetail.parentPhone)}
                   >
                     <Phone className="w-4 h-4 mr-2" /> Appeler
                   </Button>

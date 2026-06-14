@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger
 } from './ui/dropdown-menu';
 import ErrorBoundary from './ErrorBoundary';
-import { triggerPrint } from '../lib/utils';
+import { triggerPrint, getAvatarUrl } from '../lib/utils';
 
 const Layout: React.FC = () => {
   const { isAuthenticated, logout, user } = useAuth();
@@ -47,7 +47,7 @@ const Layout: React.FC = () => {
           <div className="flex items-center gap-3 p-3 rounded-2xl bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors shadow-sm border border-secondary">
             <div className="w-10 h-10 flex-shrink-0 rounded-full border border-white bg-white flex items-center justify-center overflow-hidden shadow-sm">
                 <img 
-                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || 'admin'}&backgroundColor=e2e8f0`} 
+                 src={getAvatarUrl(user?.username || 'admin', 'employee')} 
                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
                  alt="Profile" 
                  className="w-full h-full object-cover" 
