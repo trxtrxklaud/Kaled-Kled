@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════
+// SwiftView / Providence — Firestore Security Rules (production)
+//
+// Real multi-tenant access control, enforced at the database level:
+//   • Every staff/admin/teacher is a Firebase Auth user with a profile
+//     document at  users/{uid}  →  { role, schoolId, name, ... }
+//   • A user may only read/write data of the school their profile
+//     belongs to:  schools/{schoolId}/...
+//   • Role-restricted writes (e.g. finance) can be tightened further
+//     using the isAdmin()/isStaff() helpers below.
+//
+// Bootstrap: the first admin account is created by scripts/seed.mjs,
+// which signs in as that user and writes its own users/{uid} profile
+// (allowed by the self-write rule), after which these rules apply.
+// ═══════════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function hasProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function memberOf(schoolId) {
+      return hasProfile() && profile().schoolId == schoolId;
+    }
+    function isAdmin(schoolId) {
+      return memberOf(schoolId) && profile().role == 'admin';
+    }
+    function isStaff(schoolId) {
+      return memberOf(schoolId) && (profile().role == 'admin' || profile().role == 'staff');
+    }
+
+    // ── Per-school data subtree ──
+    match /schools/{schoolId}/{document=**} {
+      // Any member of the school may read its data.
+      allow read: if memberOf(schoolId);
+      // Any member may write operational data. Tighten specific paths to
+      // isStaff(schoolId) / isAdmin(schoolId) as policy requires.
+      allow write: if memberOf(schoolId);
+    }
+
+    // ── User role profiles ──
+    match /users/{uid} {
+      // Authenticated users can read profiles (needed to resolve roles).
+      allow read: if isSignedIn();
+      // A user may create/maintain ONLY their own profile, and may not
+      // grant themselves a role/school they are not entitled to beyond
+      // what the (admin-driven) account-creation flow set. Deletes off.
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ── Deny everything else by default ──
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

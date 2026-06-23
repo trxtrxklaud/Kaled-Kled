@@ -30,7 +30,7 @@ const NewsAdminTool: React.FC<NewsAdminToolProps> = ({ onPublish }) => {
     try {
       if (file.type.startsWith('image/')) {
         const { compressImageFile } = await import('../../lib/imageCompressor');
-        const compressedDataUrl = await compressImageFile(file, 800, 0.8);
+        const compressedDataUrl = await compressImageFile(file);
         setFormData({ ...formData, mediaData: compressedDataUrl, mediaUrl: file.name });
       } else {
         const reader = new FileReader();

@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'staff' | 'teacher';
+export type Role = 'admin' | 'staff' | 'teacher' | 'parent';
 
 export type ResultsPerformanceFilter = 'all' | 'excellence' | 'failing';
 export type ResultsSortField = 'student' | 'class' | 'subject' | 'examLabel' | 'trimester' | 'score' | 'coefficient' | 'recordedAt';
@@ -10,6 +10,9 @@ export interface User {
   role: Role;
   name: string;
   assignedClasses?: string[]; // For teachers
+  childrenIds?: string[]; // For parents
+  phone?: string;
+  mustChangePassword?: boolean;
 }
 
 export type SchoolLevel = '1' | '2' | '3' | '4' | '5' | '6';
@@ -96,8 +99,17 @@ export interface Message {
   read: boolean;
 }
 
+export interface ParentUser {
+  id: string;
+  fullName: string;
+  phone: string;
+  passwordHash: string;
+  mustChangePassword: boolean;
+  childrenIds: string[];
+}
+
 export interface ScheduleCell {
-  subject: string;
+  subject?: string;
   teacher?: string;
   room?: string;
   colorIdx: number;

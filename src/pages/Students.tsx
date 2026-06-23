@@ -85,43 +85,42 @@ const Students: React.FC = () => {
 
   const handleSaveData = async () => {
     try {
-      const worksheet = XLSX.utils.json_to_sheet(filteredStudents.map(s => ({
-        'Nom et Prénom': s.fullName,
-        'Classe': s.class,
-        'Date de Naissance': s.birthDate || '',
-        'Parent': s.parentName || '',
-        'Téléphone': s.parentPhone || ''
-      })));
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Élèves");
       
+      const classesInData = Array.from(new Set(filteredStudents.map(s => String(s.class)))).sort();
+
+      if (classesInData.length > 1) {
+        classesInData.forEach((cls, idx) => {
+          const clsStudents = filteredStudents.filter(s => String(s.class) === cls).sort((a,b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
+          const worksheet = XLSX.utils.json_to_sheet(clsStudents.map(s => ({
+            'Nom et Prénom': s.fullName,
+            'Classe': s.class,
+            'Date de Naissance': s.birthDate || '',
+            'Parent': s.parentName || '',
+            'Téléphone': s.parentPhone || ''
+          })));
+          const safeName = `C_${cls}`.replace(/[\\/?*[\]]/g, '_').substring(0, 27) + `_${idx}`;
+          XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+        });
+      } else {
+        const sortedStudents = [...filteredStudents].sort((a,b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
+        const worksheet = XLSX.utils.json_to_sheet(sortedStudents.map(s => ({
+          'Nom et Prénom': s.fullName,
+          'Classe': s.class,
+          'Date de Naissance': s.birthDate || '',
+          'Parent': s.parentName || '',
+          'Téléphone': s.parentPhone || ''
+        })));
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Élèves");
+      }
+
       const defaultFilename = selectedClass ? `Liste_Eleves_${selectedClass}.xlsx` : "Liste_Eleves.xlsx";
 
-      if ('showSaveFilePicker' in window) {
-        const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        
-        // @ts-ignore
-        const fileHandle = await window.showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Fichier Excel',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
-          }],
-        });
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
-      } else {
-        XLSX.writeFile(workbook, defaultFilename);
-        toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
-      }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error(error);
-        toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
-      }
+      XLSX.writeFile(workbook, defaultFilename);
+      toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
+    } catch (error: unknown) {
+      console.error(error);
+      toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
     }
   };
 
@@ -138,12 +137,24 @@ const Students: React.FC = () => {
   // Filter classes based on teacher's assigned classes
   const visibleClasses = isTeacher ? assignedClasses : CLASSES;
 
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const pageSize = 50;
+
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage(1);
+  }, [searchQuery, selectedClass, students.length]);
+
   const filteredStudents = students.filter(s => {
     const matchesClass = selectedClass ? s.class === selectedClass : true;
     const matchesSearch = s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (s.parentName ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesClass && matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
 
   const handleSelectAll = () => {
     if (selectedIds.size === filteredStudents.length && filteredStudents.length > 0) {
@@ -288,7 +299,7 @@ const Students: React.FC = () => {
       if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
         const text = await file.text();
         const doc = new DOMParser().parseFromString(text, 'text/html');
-        const rows: any[] = [];
+        const rows: unknown[] = [];
         
         doc.querySelectorAll('tr').forEach((tr, index) => {
           if (index === 0) return; // skip header
@@ -586,7 +597,7 @@ const Students: React.FC = () => {
                   )}
                 </div>
               ) : (
-                filteredStudents.map((student) => {
+                paginatedStudents.map((student) => {
                   const todayPresent = getTodayAttendance(student.id);
                   let touchTimer: ReturnType<typeof setTimeout>;
 
@@ -708,6 +719,32 @@ const Students: React.FC = () => {
                 )})
               )}
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6 pb-20 sm:pb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-full px-4 border-slate-200 text-slate-600"
+                >
+                  {isRTL ? 'السابق' : 'Précédent'}
+                </Button>
+                <div className="text-sm font-semibold text-slate-500 px-2">
+                  {currentPage} / {totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-full px-4 border-slate-200 text-slate-600"
+                >
+                  {isRTL ? 'التالي' : 'Suivant'}
+                </Button>
+              </div>
+            )}
           </AnimatePresence>
         </div>
       )}

@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import * as XLSX from '../lib/xlsx';
 
 const EduservIntegration: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const {
     students,
     attendance,
@@ -112,11 +112,11 @@ const EduservIntegration: React.FC = () => {
         addLog('info', `[INFO] ${payload.message}`);
       }
 
-      toast.success('Synchronisation Eduserv réussie');
+      toast.success('Synchronisation avec la plateforme CNTE réussie');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown sync error';
       addLog('error', `[ERROR] ${message}`);
-      toast.error('Échec de la synchronisation Eduserv');
+      toast.error('Échec de la synchronisation CNTE');
     } finally {
       setIsSyncing(false);
     }
@@ -160,7 +160,7 @@ const EduservIntegration: React.FC = () => {
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.csv') || file.name.endsWith('.xls'))) {
       void handleFileImport(file);
     } else {
-      toast.error('Format non supporté. Utilisez .xlsx, .xls ou .csv du portail Eduserv.');
+      toast.error('Format non supporté. Utilisez .xlsx, .xls ou .csv du portail CNTE - مدرستي.');
     }
   };
 
@@ -183,19 +183,7 @@ const EduservIntegration: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const downloadCSV = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    addLog('success', `[OK] Export generated: ${filename}`);
-    toast.success(t('print_export') || 'Fichier exporté');
-  };
+
 
   const handleExportAttendance = () => {
     if (attendance.length === 0) {
@@ -204,24 +192,44 @@ const EduservIntegration: React.FC = () => {
       return;
     }
 
-    const headers = ['student_id', 'full_name', 'class', 'date', 'present', 'recorded_by', 'sync_date'];
     const today = new Date().toISOString().split('T')[0];
-
-    const rows = attendance.map((record: AttendanceRecord) => {
+    const exportData = attendance.map((record: AttendanceRecord) => {
       const student = students.find((item: Student) => item.id === record.studentId);
-      return [
-        record.studentId || '',
-        student?.fullName || 'Inconnu',
-        record.classId || student?.class || '',
-        record.date ? record.date.split('T')[0] : today,
-        record.present ? '1' : '0',
-        record.recordedBy || 'teacher',
-        today,
-      ].join(',');
+      return {
+        student_id: record.studentId || '',
+        full_name: student?.fullName || 'Inconnu',
+        class: record.classId || student?.class || '',
+        date: record.date ? record.date.split('T')[0] : today,
+        present: record.present ? '1' : '0',
+        recorded_by: record.recordedBy || 'teacher',
+        sync_date: today,
+      };
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    downloadCSV(csvContent, `eduserv_attendance_report_${today}.csv`);
+    try {
+      const workbook = XLSX.utils.book_new();
+      const classesInData = Array.from(new Set(exportData.map(d => d.class))).sort();
+
+      if (classesInData.length > 1) {
+        classesInData.forEach((cls, idx) => {
+          const clsData = exportData.filter(d => d.class === cls).sort((a,b) => String(a.full_name).localeCompare(String(b.full_name)));
+          const worksheet = XLSX.utils.json_to_sheet(clsData);
+          const safeName = `C_${cls}`.replace(/[\\/?*[\]]/g, '_').substring(0, 27) + `_${idx}`;
+          XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+        });
+      } else {
+        exportData.sort((a,b) => String(a.full_name).localeCompare(String(b.full_name)));
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Presence");
+      }
+
+      XLSX.writeFile(workbook, `eduserv_attendance_report_${today}.xlsx`);
+      addLog('success', `[OK] Export generated: eduserv_attendance_report_${today}.xlsx`);
+      toast.success(t('print_export') || 'Fichier exporté');
+    } catch (err) {
+      console.error("Export error", err);
+      toast.error("Erreur lors de l'export: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const handleExportGrades = () => {
@@ -231,28 +239,49 @@ const EduservIntegration: React.FC = () => {
       return;
     }
 
-    const headers = ['full_name', 'class', 'birth_date', 'parent_name', 'parent_phone', 'trimestre', 'subject', 'grade', 'notes', 'export_date'];
     const today = new Date().toISOString().split('T')[0];
     const studentDirectory = new Map<string, Student>(students.map((student) => [student.id, student]));
 
-    const rows = academicResults.map((result) => {
+    const exportData = academicResults.map((result) => {
       const student = studentDirectory.get(result.studentId);
-      return [
-        student?.fullName || 'Inconnu',
-        student?.class || result.classId,
-        student?.birthDate || '',
-        student?.parentName || '',
-        student?.parentPhone || '',
-        String(result.trimester),
-        result.subject,
-        result.score.toFixed(2),
-        result.examLabel,
-        today,
-      ].join(',');
+      return {
+        full_name: student?.fullName || 'Inconnu',
+        class: student?.class || result.classId,
+        birth_date: student?.birthDate || '',
+        parent_name: student?.parentName || '',
+        parent_phone: student?.parentPhone || '',
+        trimestre: String(result.trimester),
+        subject: result.subject,
+        grade: result.score,
+        notes: result.examLabel,
+        export_date: today,
+      };
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    downloadCSV(csvContent, `eduserv_bulletins_template_${today}.csv`);
+    try {
+      const workbook = XLSX.utils.book_new();
+      const classesInData = Array.from(new Set(exportData.map(d => String(d.class)))).sort();
+
+      if (classesInData.length > 1) {
+        classesInData.forEach((cls, idx) => {
+          const clsData = exportData.filter(d => String(d.class) === cls).sort((a,b) => String(a.full_name).localeCompare(String(b.full_name)));
+          const worksheet = XLSX.utils.json_to_sheet(clsData);
+          const safeName = `C_${cls}`.replace(/[\\/?*[\]]/g, '_').substring(0, 27) + `_${idx}`;
+          XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+        });
+      } else {
+        exportData.sort((a,b) => String(a.full_name).localeCompare(String(b.full_name)));
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Notes");
+      }
+
+      XLSX.writeFile(workbook, `eduserv_bulletins_template_${today}.xlsx`);
+      addLog('success', `[OK] Export generated: eduserv_bulletins_template_${today}.xlsx`);
+      toast.success(t('print_export') || 'Fichier exporté');
+    } catch (err) {
+      console.error("Export error", err);
+      toast.error("Erreur lors de l'export: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   return (
@@ -262,7 +291,7 @@ const EduservIntegration: React.FC = () => {
           <Globe className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-2xl font-black tracking-tight">{t('eduserv_integration')}</h2>
+          <h2 className="text-2xl font-black tracking-tight">{isRTL ? 'المنظومة المعلوماتية (CNTE)' : 'Intégration CNTE / مدرستي'}</h2>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[2px]">Ministère de l'Éducation • Backend Sync Workflow</p>
         </div>
         <Badge variant="outline" className="ml-auto text-[9px] font-black px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200">
@@ -281,7 +310,7 @@ const EduservIntegration: React.FC = () => {
 
           <div className="bg-slate-50/60 p-6 rounded-2xl border border-slate-100 space-y-5">
             <div>
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t('eduserv_credentials')}</Label>
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{isRTL ? 'بيانات ربط المنظومة' : 'Identifiants CNTE'}</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-500">{t('api_key')}</Label>
@@ -339,7 +368,7 @@ const EduservIntegration: React.FC = () => {
               <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-white shadow flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FileText className="w-7 h-7 text-emerald-500" />
               </div>
-              <p className="font-black text-sm text-slate-700 mb-1">Fichier du portail Eduserv</p>
+              <p className="font-black text-sm text-slate-700 mb-1">Fichier de la plateforme مدرستي</p>
               <p className="text-[10px] font-bold text-slate-400">.xlsx • .xls • .csv • jusqu'à 5MB</p>
               <Badge variant="secondary" className="mt-3 text-[9px] font-black px-2.5 py-0.5 rounded-full">Local import engine</Badge>
             </div>
@@ -355,7 +384,7 @@ const EduservIntegration: React.FC = () => {
               <h3 className="text-xl font-black tracking-tight">{t('export_data')}</h3>
             </div>
 
-            <p className="text-sm text-slate-600 font-medium">Générez des fichiers structurés au format officiel du Ministère pour soumission Eduserv.</p>
+            <p className="text-sm text-slate-600 font-medium">Générez des fichiers structurés au format officiel de l'Éducation pour soumission au CNTE.</p>
 
             <div className="space-y-3 pt-2">
               <Button onClick={handleExportAttendance} variant="outline" className="w-full h-12 rounded-2xl font-black text-sm tracking-widest border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 justify-start gap-3">
