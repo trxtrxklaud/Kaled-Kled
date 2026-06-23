@@ -6,11 +6,11 @@ interface DialogProps {
   children: React.ReactNode
 }
 
-export const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children }) => {
+export const Dialog: React.FC<DialogProps> = ({ open, children }) => {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => onOpenChange(false)}>
-      <div onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div>
         {children}
       </div>
     </div>

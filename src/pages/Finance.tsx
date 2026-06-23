@@ -48,7 +48,7 @@ const Finance: React.FC = () => {
       if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
         const text = await file.text();
         const doc = new DOMParser().parseFromString(text, 'text/html');
-        const rows: any[] = [];
+        const rows: unknown[] = [];
         
         doc.querySelectorAll('tr').forEach((tr, index) => {
           if (index === 0) return; // skip header
@@ -113,7 +113,7 @@ const Finance: React.FC = () => {
         };
         reader.readAsBinaryString(file);
       }
-    } catch (err) {
+    } catch {
       toast.error(t('error_import'));
     }
   };

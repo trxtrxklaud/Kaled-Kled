@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import type { Homework } from '../lib/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Lightbox } from '../components/ui/lightbox';
+import { downloadFile, safeOpenExternalLink } from '../lib/utils';
 
 // Expanded to 5 sections per grade (A-E) - matching existing CLASSES in project
 const CLASSES = [
@@ -52,8 +53,8 @@ const SUBJECTS = [
 const SERVER_BASE_URL = 'https://school.providence.ma/files/';
 
 const HomeworkPage: React.FC = () => {
-  const { isTeacher, assignedClasses } = useAuth();
-  const { homeworks, addHomework, updateHomework, deleteHomework, academicAssets, addAcademicAsset, removeAcademicAsset } = useData();
+  const { isTeacher, assignedClasses, isParent, user } = useAuth();
+  const { homeworks, addHomework, updateHomework, deleteHomework, academicAssets, addAcademicAsset, removeAcademicAsset, students } = useData();
   const { t, isRTL } = useLanguage();
 
   // Wizard state variables
@@ -72,6 +73,19 @@ const HomeworkPage: React.FC = () => {
   const [previewLightbox, setPreviewLightbox] = useState<string | null>(null);
 
   const visibleClasses = isTeacher ? assignedClasses : CLASSES;
+
+  // Filter for Parents
+  const childClassMatch = isParent
+    ? students.find(s => user?.childrenIds?.includes(s.id))?.class
+    : null;
+
+  const filteredHomeworks = (isParent && childClassMatch)
+    ? homeworks.filter(hw => hw.classes?.includes(childClassMatch) || hw.classes?.includes('Tous'))
+    : homeworks;
+
+  const filteredAssets = (isParent && childClassMatch)
+    ? academicAssets.filter(asset => asset.classId === 'all' || asset.classId === childClassMatch)
+    : academicAssets;
 
   const resetWizard = () => {
     setCurrentStep(1);
@@ -142,13 +156,17 @@ const HomeworkPage: React.FC = () => {
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      if (file.type.startsWith('image/')) {
-        const { compressImageFile } = await import('../lib/imageCompressor');
-        const data = await compressImageFile(file, 1600, 0.7);
+      const { compressImageFile, SUPPORTED_TYPES } = await import('../lib/imageCompressor');
+
+      if (SUPPORTED_TYPES.includes(file.type) || file.type.startsWith('image/')) {
+        const data = await compressImageFile(file);
         setUploadedFile(file.name);
         setUploadedFilePreview(data);
       } else {
@@ -158,26 +176,31 @@ const HomeworkPage: React.FC = () => {
           setUploadedFilePreview(ev.target?.result as string);
         };
         reader.onerror = () => {
-          toast.error("Failed to read file.");
+          toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
         };
         reader.readAsDataURL(file);
       }
     } catch (err) {
-      console.error(err);
-      toast.error("Failed to process file.");
+      console.error('[ImagePicker] Error:', err);
+      toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
       setUploadedFile(null);
       setUploadedFilePreview(null);
+    } finally {
+      (e.target as HTMLInputElement).value = '';
     }
   };
 
   const handleResourceUpload = async (subjectKey: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      if (file.type.startsWith('image/')) {
-        const { compressImageFile } = await import('../lib/imageCompressor');
-        const payload = await compressImageFile(file, 1600, 0.7);
+      const { compressImageFile, SUPPORTED_TYPES } = await import('../lib/imageCompressor');
+      if (SUPPORTED_TYPES.includes(file.type) || file.type.startsWith('image/')) {
+        const payload = await compressImageFile(file);
         addAcademicAsset({
           fileName: file.name,
           fileSize: file.size,
@@ -199,16 +222,16 @@ const HomeworkPage: React.FC = () => {
           });
         };
         reader.onerror = () => {
-          toast.error("Échec de la lecture du fichier");
+          toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
         };
         reader.readAsDataURL(file);
       }
       toast.success(`Média ajouté sous ${subjectKey}`);
     } catch (err) {
-      console.error(err);
-      toast.error("Erreur de traitement", { description: "Protégé contre le crash mémoire" });
+      console.error('[ImagePicker] Error:', err);
+      toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
     } finally {
-      e.target.value = '';
+      (e.target as HTMLInputElement).value = '';
     }
   };
 
@@ -272,13 +295,13 @@ const HomeworkPage: React.FC = () => {
 
         <TabsContent value="homeworks" className="space-y-4">
           {/* Existing Homework List - View Assignments */}
-          {homeworks.length === 0 ? (
+          {filteredHomeworks.length === 0 ? (
             <div className="py-20 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
               <BookOpen className="w-12 h-12 text-slate-200 mx-auto mb-4" />
               <p className="text-slate-400 font-black text-xs uppercase tracking-widest">{t('no_homework')}</p>
             </div>
           ) : (
-            homeworks.map((hw) => (
+            filteredHomeworks.map((hw) => (
               <Card key={hw.id} className="border-none shadow-lg shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white group hover:ring-2 hover:ring-primary/5 transition-all">
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start mb-4">
@@ -356,7 +379,14 @@ const HomeworkPage: React.FC = () => {
                         variant="ghost" 
                         size="icon" 
                         className="h-8 w-8 text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 flex-shrink-0 print:hidden" 
-                        onClick={() => window.open(hw.fileData || `${SERVER_BASE_URL}${hw.fileName}`, '_blank')}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (hw.fileData && hw.fileData.startsWith('data:')) {
+                            downloadFile(hw.fileData, hw.fileName || 'homework');
+                          } else {
+                            safeOpenExternalLink(hw.fileData || `${SERVER_BASE_URL}${hw.fileName}`);
+                          }
+                        }}
                       >
                         <Download className="w-4 h-4" />
                       </Button>
@@ -371,23 +401,33 @@ const HomeworkPage: React.FC = () => {
         <TabsContent value="resources" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {SUBJECTS.map((sub) => {
-              const subjectAssets = academicAssets?.filter(a => a.subjectKey === sub) || [];
+              const subjectAssets = filteredAssets?.filter(a => a.subjectKey === sub) || [];
+              if (isParent && subjectAssets.length === 0) return null; // hide empty subjects for parents
+
               return (
                 <Card key={sub} className="border-none shadow-xl shadow-slate-200/40 rounded-[2rem] overflow-hidden bg-white">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
                       <h4 className="text-lg font-black text-slate-900 tracking-tight">{sub}</h4>
-                      <div className="relative group/uploader cursor-pointer">
-                        <input 
-                          type="file" 
-                          accept="image/*,application/pdf"
-                          onChange={(e) => void handleResourceUpload(sub, e)}
-                          className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
-                        />
-                        <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full pointer-events-none group-hover/uploader:bg-primary group-hover/uploader:text-white transition-colors">
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
+                      {isTeacher && (
+                        <div
+                          className="relative group/uploader cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => void handleResourceUpload(sub, e)}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                          />
+                          <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full pointer-events-none group-hover/uploader:bg-primary group-hover/uploader:text-white transition-colors">
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="space-y-3 min-h-[100px]">
@@ -398,11 +438,14 @@ const HomeworkPage: React.FC = () => {
                           <div key={asset.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 group/asset">
                             <div 
                               className="w-10 h-10 rounded-xl bg-slate-200 overflow-hidden flex items-center justify-center cursor-pointer shrink-0"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (asset.mimeType.startsWith('image/')) {
                                   setPreviewLightbox(asset.payload);
+                                } else if (asset.payload && asset.payload.startsWith('data:')) {
+                                  downloadFile(asset.payload, asset.fileName || 'asset');
                                 } else {
-                                  window.open(asset.payload, '_blank');
+                                  safeOpenExternalLink(asset.payload);
                                 }
                               }}
                             >
@@ -416,14 +459,16 @@ const HomeworkPage: React.FC = () => {
                               <p className="text-xs font-bold text-slate-700 truncate">{asset.fileName}</p>
                               {asset.fileSize && <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{(asset.fileSize / 1024 / 1024).toFixed(2)} MB</p>}
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-7 w-7 text-rose-500 rounded-lg hover:bg-rose-100 opacity-0 group-hover/asset:opacity-100 transition-opacity print:hidden" 
-                              onClick={() => removeAcademicAsset(asset.id)}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
+                            {isTeacher && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-rose-500 rounded-lg hover:bg-rose-100 opacity-0 group-hover/asset:opacity-100 transition-opacity print:hidden"
+                                onClick={() => removeAcademicAsset(asset.id)}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         ))
                       )}
@@ -539,11 +584,17 @@ const HomeworkPage: React.FC = () => {
             {currentStep === 4 && (
               <div className="space-y-4">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('attach_file')}</Label>
-                <div className="border-4 border-dashed border-slate-100 rounded-[2rem] p-10 flex flex-col items-center justify-center bg-slate-50/30 hover:bg-slate-50 hover:border-primary/20 transition-all cursor-pointer group relative">
+                <div
+                  className="border-4 border-dashed border-slate-100 rounded-[2rem] p-10 flex flex-col items-center justify-center bg-slate-50/30 hover:bg-slate-50 hover:border-primary/20 transition-all cursor-pointer group relative"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
                   <input 
                     type="file" 
                     accept=".xlsx,.xls,.docx,.doc,.pdf,.png,.jpg,.jpeg"
                     onChange={handleFileSelect}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
                     className="absolute inset-0 opacity-0 cursor-pointer z-10"
                   />
                   <Upload className="w-10 h-10 text-slate-200 mb-4 group-hover:scale-110 group-hover:text-primary transition-all" />
@@ -629,6 +680,7 @@ const HomeworkPage: React.FC = () => {
         isOpen={!!previewLightbox} 
         src={previewLightbox} 
         onClose={() => setPreviewLightbox(null)} 
+        filename="homework_image"
       />
     </div>
   );

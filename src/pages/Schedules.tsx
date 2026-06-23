@@ -229,7 +229,7 @@ const Schedules: React.FC = () => {
     if (!cell) {
       return false;
     }
-    const normalizedSubject = cell.subject.trim().toLowerCase();
+    const normalizedSubject = (cell.subject || '').trim().toLowerCase();
     return exams.some((exam) => exam.subject.trim().toLowerCase() === normalizedSubject) || normalizedSubject.includes('exam');
   };
 
@@ -301,7 +301,7 @@ const Schedules: React.FC = () => {
             classId: otherClassId,
             startTime: otherCell.startTime,
             endTime: otherCell.endTime,
-            subject: otherCell.subject,
+            subject: otherCell.subject || '',
           };
         }
       }
@@ -324,8 +324,8 @@ const Schedules: React.FC = () => {
       return;
     }
     setCellForm(existingCell ? {
-      selectedSubject: SUBJECTS.includes(existingCell.subject) ? existingCell.subject : '',
-      manualSubject: SUBJECTS.includes(existingCell.subject) ? '' : existingCell.subject,
+      selectedSubject: existingCell.subject && SUBJECTS.includes(existingCell.subject) ? existingCell.subject : '',
+      manualSubject: existingCell.subject && SUBJECTS.includes(existingCell.subject) ? '' : (existingCell.subject || ''),
       teacher: existingCell.teacher || '',
       room: existingCell.room || '',
       colorIdx: existingCell.colorIdx,
@@ -449,7 +449,7 @@ const Schedules: React.FC = () => {
             items.push({
               day,
               classId,
-              subject: cell.subject,
+              subject: cell.subject || '',
               startTime: cell.startTime,
               endTime: cell.endTime,
               room: cell.room,
@@ -527,7 +527,7 @@ const Schedules: React.FC = () => {
             classes: [left.classId, right.classId],
             startTime: left.cell.startTime,
             endTime: right.cell.endTime,
-            subjects: [left.cell.subject, right.cell.subject],
+            subjects: [left.cell.subject || '', right.cell.subject || ''],
           });
         }
       }
@@ -649,8 +649,8 @@ const Schedules: React.FC = () => {
     applyWeeklySchedule(nextSchedule);
     logTimetableAction('cell_pasted', `Case collée sur ${selectedClass}`, { day: editCell.day, time: editCell.time });
     setCellForm({
-      selectedSubject: SUBJECTS.includes(pastedCell.subject) ? pastedCell.subject : '',
-      manualSubject: SUBJECTS.includes(pastedCell.subject) ? '' : pastedCell.subject,
+      selectedSubject: pastedCell.subject && SUBJECTS.includes(pastedCell.subject) ? pastedCell.subject : '',
+      manualSubject: pastedCell.subject && SUBJECTS.includes(pastedCell.subject) ? '' : (pastedCell.subject || ''),
       teacher: pastedCell.teacher || '',
       room: pastedCell.room || '',
       colorIdx: pastedCell.colorIdx,
@@ -819,7 +819,7 @@ const Schedules: React.FC = () => {
     pdf.setTextColor(255, 255, 255);
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(18);
-    pdf.text(schoolBranding.schoolNameFr || 'Complexe La Providence', 14, 12);
+    pdf.text(schoolBranding.schoolNameFr || 'المدرسة الابتدائية الخاصة العناية', 14, 12);
     pdf.setFontSize(12);
     pdf.text(`Emploi du temps hebdomadaire — ${classId}`, 14, 19);
     if (schoolBranding.logoDataUrl) {
@@ -1265,7 +1265,7 @@ const Schedules: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const data = await compressImageFile(file, 1600, 0.7);
+      const data = await compressImageFile(file);
       setPendingTimetableFile({ name: file.name, data });
     } catch (err) {
       console.error(err);
@@ -1312,7 +1312,7 @@ const Schedules: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const data = await compressImageFile(file, 1600, 0.7);
+      const data = await compressImageFile(file);
       setPendingPlanFile({ name: file.name, data });
     } catch (err) {
       console.error(err);
@@ -1398,7 +1398,7 @@ const Schedules: React.FC = () => {
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 print:hidden">
           <button onClick={() => setDetailTrimester(null)}
             className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
             <ArrowLeft className="w-4 h-4" />
@@ -1412,8 +1412,8 @@ const Schedules: React.FC = () => {
         </div>
 
         {file ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="space-y-3 print:space-y-0 print:m-0 print:p-0">
+            <div className="flex items-center justify-between print:hidden">
               <span className="flex items-center gap-2 font-black text-slate-700 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />{file.fileName}
               </span>
@@ -1424,21 +1424,21 @@ const Schedules: React.FC = () => {
                 </button>
               )}
             </div>
-            <p className="text-[10px] text-slate-400 font-bold">
+            <p className="text-[10px] text-slate-400 font-bold print:hidden">
               Appliqué à {level}A · {level}B · {level}C · {level}D · {level}E &nbsp;·&nbsp;
               {new Date(file.uploadDate).toLocaleDateString('fr-FR')}
             </p>
             {file.fileData.startsWith('data:image') ? (
-              <img src={file.fileData} alt="Planning" className="w-full rounded-2xl border border-slate-100 shadow-sm object-contain max-h-[500px]" />
+              <img src={file.fileData} alt="Planning" className="w-full rounded-2xl border-none md:border md:border-slate-100 md:shadow-sm object-contain md:max-h-[500px] print:block print:w-full print:h-[99vh] print:max-h-[99vh] print:object-contain print:shadow-none print:rounded-none print:m-0 print:p-0" />
             ) : (
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 py-14 flex flex-col items-center gap-3">
-                <FileImage className="w-12 h-12 text-slate-300" />
-                <p className="text-slate-500 font-bold text-sm">{file.fileName}</p>
+              <div className="bg-slate-50 rounded-2xl border border-slate-100 py-14 flex flex-col items-center gap-3 print:border-none print:bg-white">
+                <FileImage className="w-12 h-12 text-slate-300 print:hidden" />
+                <p className="text-slate-500 font-bold text-sm">Fichier PDF — {file.fileName}</p>
               </div>
             )}
             {isAdmin && (
               <button onClick={() => { setUploadLevel(level); setUploadTrimester(detailTrimester); setShowPlanUpload(true); }}
-                className="w-full py-3 border-2 border-dashed border-primary/30 rounded-2xl text-primary font-black text-sm hover:border-primary/60 hover:bg-primary/5 transition-all flex items-center justify-center gap-2">
+                className="w-full py-3 border-2 border-dashed border-primary/30 rounded-2xl text-primary font-black text-sm hover:border-primary/60 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 print:hidden">
                 <Upload className="w-4 h-4" /> Remplacer
               </button>
             )}
@@ -1472,8 +1472,8 @@ const Schedules: React.FC = () => {
   if (activeTab === 'timetable' && viewingClassImage !== null) {
     const imgData = classTimetableImages[viewingClassImage];
     return (
-      <div className="space-y-5">
-        <div className="flex items-center gap-3">
+      <div className="space-y-5 print:space-y-0 print:m-0 print:p-0">
+        <div className="flex items-center gap-3 print:hidden">
           <button onClick={() => setViewingClassImage(null)}
             className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
             <ArrowLeft className="w-4 h-4" />
@@ -1487,15 +1487,15 @@ const Schedules: React.FC = () => {
         {imgData ? (
           imgData.startsWith('data:image') ? (
             <img src={imgData} alt={`EDT ${viewingClassImage}`}
-              className="w-full rounded-2xl border border-slate-100 shadow-sm object-contain max-h-[600px]" />
+              className="w-full rounded-2xl border-none md:border md:border-slate-100 md:shadow-sm object-contain md:max-h-[600px] print:block print:w-full print:h-[99vh] print:max-h-[99vh] print:object-contain print:shadow-none print:rounded-none print:m-0 print:p-0" />
           ) : (
-            <div className="bg-slate-50 rounded-2xl border border-slate-100 py-14 flex flex-col items-center gap-3">
-              <FileImage className="w-12 h-12 text-slate-300" />
+            <div className="bg-slate-50 rounded-2xl border border-slate-100 py-14 flex flex-col items-center gap-3 print:border-none print:bg-white">
+              <FileImage className="w-12 h-12 text-slate-300 print:hidden" />
               <p className="text-slate-500 font-bold">Fichier PDF — {viewingClassImage}</p>
             </div>
           )
         ) : (
-          <Card className="border-none shadow-sm rounded-2xl">
+          <Card className="border-none shadow-sm rounded-2xl print:hidden">
             <CardContent className="py-14 text-center">
               <p className="text-slate-400 font-bold">Aucune image disponible pour {viewingClassImage}</p>
             </CardContent>
@@ -1503,7 +1503,7 @@ const Schedules: React.FC = () => {
         )}
 
         {isAdmin && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 print:hidden">
             <button onClick={() => { setTimetableUploadClass(viewingClassImage); setShowTimetableUpload(true); }}
               className="flex-1 py-3 border-2 border-dashed border-primary/30 rounded-2xl text-primary font-black text-sm hover:border-primary/60 hover:bg-primary/5 transition-all flex items-center justify-center gap-2">
               <Upload className="w-4 h-4" /> {imgData ? 'Remplacer' : 'Importer'}
@@ -1530,12 +1530,12 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
           onClick={(e) => { if (e.target === e.currentTarget) resetTimetableUpload(); }}
         >
           <motion.div
-            initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl"
+            initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} // animate y
+            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900">Publier Emploi du Temps</h3>
@@ -1627,12 +1627,12 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
           onClick={(e) => { if (e.target === e.currentTarget) resetPlanUpload(); }}
         >
           <motion.div
             initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl"
+            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900">Publier Planning Examens</h3>
@@ -1729,12 +1729,12 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
           onClick={(e) => { if (e.target === e.currentTarget) setShowBatchExport(false); }}
         >
           <motion.div
             initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl"
+            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900">Export multi-classes</h3>
@@ -1801,12 +1801,12 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
           onClick={(e) => { if (e.target === e.currentTarget) setShowBatchTransfer(false); }}
         >
           <motion.div
             initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl"
+            className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900">Déplacer / Copier l'emploi du temps</h3>
@@ -1869,10 +1869,10 @@ const Schedules: React.FC = () => {
   // Main view
   // ────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 print:space-y-0 print:m-0 print:p-0 print:block">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-3">
           <div className="bg-primary/10 p-2.5 rounded-2xl">
             <Calendar className="w-5 h-5 text-primary" />
@@ -1904,7 +1904,7 @@ const Schedules: React.FC = () => {
       />
 
       {/* Class selector */}
-      <div className="relative">
+      <div className="relative print:hidden">
         <button type="button" onClick={() => setClassDropOpen(v => !v)}
           className="w-full flex items-center justify-between bg-white border-2 border-primary/20 rounded-2xl px-5 py-3.5 shadow-sm hover:border-primary/40 transition-colors">
           <div className="flex items-center gap-3">
@@ -1952,7 +1952,7 @@ const Schedules: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
+      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 print:hidden">
         {([
           { key: 'timetable', label: 'Emploi du temps', icon: Clock },
           { key: 'exams',     label: 'Examens',          icon: BookOpen },
@@ -1975,13 +1975,13 @@ const Schedules: React.FC = () => {
           {isAdmin && (
             <button type="button"
               onClick={() => { setTimetableUploadClass(selectedClass); setShowTimetableUpload(true); }}
-              className="w-full py-3.5 rounded-2xl bg-primary text-white font-black text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors">
+              className="w-full py-3.5 rounded-2xl bg-primary text-white font-black text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors print:hidden">
               <Upload className="w-4 h-4" /> Publier un emploi du temps
             </button>
           )}
 
           {/* BUG FIX 3: All class rows clickable → opens preview */}
-          <div className="space-y-2">
+          <div className="space-y-2 print:hidden">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Appuyez sur une classe pour voir son emploi du temps
             </p>
@@ -2014,7 +2014,7 @@ const Schedules: React.FC = () => {
             ))}
           </div>
 
-          <Card className="border-none shadow-sm rounded-2xl bg-white overflow-hidden">
+          <Card className="border-none shadow-sm rounded-2xl bg-white overflow-hidden print:hidden">
             <CardContent className="p-4 grid grid-cols-1 xl:grid-cols-[1fr_auto_auto_auto_auto] gap-3 items-end">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Verrouillage</p>
@@ -2043,7 +2043,7 @@ const Schedules: React.FC = () => {
           </Card>
 
           {scheduleConflictSummary.length > 0 && (
-            <Card className="border border-rose-200 bg-rose-50 shadow-sm rounded-2xl overflow-hidden">
+            <Card className="border border-rose-200 bg-rose-50 shadow-sm rounded-2xl overflow-hidden print:hidden">
               <CardContent className="p-4 flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                 <div>
@@ -2055,8 +2055,8 @@ const Schedules: React.FC = () => {
           )}
 
           {/* Interactive weekly grid for selected class */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="space-y-2 print:space-y-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                 Grille interactive — {selectedClass}
                 {(isAdmin || isTeacher) ? ' (appuyez pour modifier / poignée pour redimensionner / glisser-déplacer pour déplacer)' : ''}
@@ -2241,7 +2241,7 @@ const Schedules: React.FC = () => {
               </table>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 print:hidden">
               <Card className="border-none shadow-sm rounded-2xl bg-white overflow-hidden">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
@@ -2465,10 +2465,10 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         {editCell && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+            className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
             onClick={(e) => { if (e.target === e.currentTarget) setEditCell(null); }}>
             <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-              className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+              className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-black text-slate-900">Modifier la case</h3>
@@ -2564,10 +2564,10 @@ const Schedules: React.FC = () => {
       <AnimatePresence>
         {showAddExam && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+            className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 pb-28 sm:pb-4 overflow-y-auto"
             onClick={(e) => { if (e.target === e.currentTarget) setShowAddExam(false); }}>
             <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-              className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+              className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[85vh] overflow-y-auto mb-auto mt-auto">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-black text-slate-900">Programmer un examen</h3>
                 <button type="button" onClick={() => setShowAddExam(false)}

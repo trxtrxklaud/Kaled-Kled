@@ -1,17 +1,18 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trash2, Printer } from 'lucide-react';
+import { X, Trash2, Printer, Download } from 'lucide-react';
 import { Button } from './button';
-import { triggerPrint } from '../../lib/utils';
+import { triggerPrint, downloadFile, safeOpenExternalLink } from '../../lib/utils';
 
 interface LightboxProps {
   isOpen: boolean;
   src: string | null;
   onClose: () => void;
   onDelete?: () => void;
+  filename?: string;
 }
 
-export const Lightbox: React.FC<LightboxProps> = ({ isOpen, src, onClose, onDelete }) => {
+export const Lightbox: React.FC<LightboxProps> = ({ isOpen, src, onClose, onDelete, filename }) => {
   if (!src) return null;
 
   return (
@@ -26,10 +27,30 @@ export const Lightbox: React.FC<LightboxProps> = ({ isOpen, src, onClose, onDele
         >
           <div className="absolute top-4 right-4 flex gap-4">
             <Button
+              type="button"
               variant="outline"
               size="icon"
               className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white rounded-full print:hidden"
               onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (src.startsWith('data:')) {
+                  downloadFile(src, filename || 'image');
+                } else {
+                  safeOpenExternalLink(src);
+                }
+              }}
+              title="تنزيل (Download)"
+            >
+              <Download className="w-5 h-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white rounded-full print:hidden"
+              onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 triggerPrint();
               }}
@@ -39,10 +60,12 @@ export const Lightbox: React.FC<LightboxProps> = ({ isOpen, src, onClose, onDele
             </Button>
             {onDelete && (
               <Button
+                type="button"
                 variant="destructive"
                 size="icon"
                 className="rounded-full shadow-lg print:hidden"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onDelete();
                   onClose();
@@ -53,10 +76,15 @@ export const Lightbox: React.FC<LightboxProps> = ({ isOpen, src, onClose, onDele
               </Button>
             )}
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               className="text-white hover:bg-white/20 rounded-full print:hidden"
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
             >
               <X className="w-6 h-6" />
             </Button>

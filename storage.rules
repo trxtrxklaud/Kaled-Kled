@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════
+// SwiftView / Providence — Firebase Storage Security Rules
+//
+// File-heavy collections (homework attachments, timetable images,
+// news/post images, certificate archives) are synced to Storage as
+// JSON blobs under:  schools/{schoolId}/blobs/{file}
+// Binary uploads (if used directly) live under:
+//                    schools/{schoolId}/files/{file}
+//
+// Access requires an authenticated session (request.auth != null),
+// which the app satisfies via anonymous (or named) Firebase Auth —
+// exactly mirroring firestore.rules. A 20 MB per-object cap protects
+// the free Spark tier from runaway uploads.
+// ═══════════════════════════════════════════════════════════════════
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Per-school data subtree (JSON blobs + binary files)
+    match /schools/{schoolId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // Deny everything else by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

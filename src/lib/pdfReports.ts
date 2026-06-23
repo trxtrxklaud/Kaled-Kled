@@ -45,13 +45,18 @@ const ensureArabicFont = (doc: jsPDF): void => {
   }
 };
 
+const safeArabic = (doc: jsPDF, text: string): string => {
+  if (!text) return text;
+  // processArabic shapes characters and usually reverses them so they draw RTL.
+  return doc.processArabic(text);
+};
+
 const drawArabicText = (doc: jsPDF, text: string, x: number, y: number, fontSize = 11): void => {
   ensureArabicFont(doc);
   doc.setFont(ARABIC_FONT_NAME, 'normal');
   doc.setFontSize(fontSize);
-  doc.setR2L(true);
+  // Do not use setR2L to prevent double reversing
   doc.text(doc.processArabic(text), x, y, { align: 'right' });
-  doc.setR2L(false);
   doc.setFont('helvetica', 'normal');
 };
 
@@ -98,8 +103,8 @@ const addSchoolStampAndSignatureArea = (doc: jsPDF, finalY: number, branding?: S
 };
 
 const addOfficialHeader = (doc: jsPDF, title: string, subtitle: string, branding?: SchoolBranding): void => {
-  const schoolNameFr = branding?.schoolNameFr || 'Complexe La Providence';
-  const schoolNameAr = branding?.schoolNameAr || 'مجمع لابروفيدانس';
+  const schoolNameFr = branding?.schoolNameFr || 'المدرسة الابتدائية الخاصة العناية';
+  const schoolNameAr = branding?.schoolNameAr || 'المدرسة الابتدائية الخاصة العناية';
 
   doc.setFillColor(...PRIMARY);
   doc.rect(0, 0, 210, 24, 'F');
@@ -157,6 +162,7 @@ export const buildAnalyticsPdfAttachment = (params: {
   branding?: SchoolBranding;
 }): AttachmentPayload => {
   const doc = new jsPDF();
+  ensureArabicFont(doc);
   addOfficialHeader(doc, 'Academic Analytics Dashboard', `${params.scopeLabel} • ${params.generatedAt}`, params.branding);
 
   doc.setFont('helvetica', 'bold');
@@ -174,14 +180,14 @@ export const buildAnalyticsPdfAttachment = (params: {
       ['Moyenne générale', `${params.overview.averageScore.toFixed(2)}/20`],
     ],
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 9 },
+    styles: { fontSize: 9, font: ARABIC_FONT_NAME },
   });
 
   autoTable(doc, {
     startY: (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ? (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable!.finalY + 10 : 90,
     head: [['Niveau', 'Évalués', 'Réussites', 'Taux', 'Excellence', 'Moyenne']],
     body: params.levels.map((level) => [
-      level.label,
+      safeArabic(doc, level.label),
       String(level.evaluatedStudents),
       String(level.successCount),
       `${level.successRate.toFixed(1)}%`,
@@ -189,7 +195,7 @@ export const buildAnalyticsPdfAttachment = (params: {
       `${level.averageScore.toFixed(2)}/20`,
     ]),
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8.5 },
+    styles: { fontSize: 8.5, font: ARABIC_FONT_NAME },
   });
 
   autoTable(doc, {
@@ -197,16 +203,16 @@ export const buildAnalyticsPdfAttachment = (params: {
     head: [['Niveau', 'Rang', 'Élève', 'Classe', 'Moyenne', 'Meilleure note']],
     body: params.leaderboard.length > 0
       ? params.leaderboard.map((item) => [
-          item.level,
+          safeArabic(doc, item.level),
           String(item.rank),
-          item.studentName,
-          item.classId,
+          safeArabic(doc, item.studentName),
+          safeArabic(doc, item.classId),
           `${item.average.toFixed(2)}/20`,
           `${item.highestScore.toFixed(2)}/20`,
         ])
       : [['—', '—', 'Aucune donnée', '—', '—', '—']],
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8.5 },
+    styles: { fontSize: 8.5, font: ARABIC_FONT_NAME },
   });
 
   const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 220;
@@ -226,23 +232,24 @@ export const buildSelectedGradesPdfAttachment = (params: {
   branding?: SchoolBranding;
 }): AttachmentPayload => {
   const doc = new jsPDF({ orientation: 'landscape' });
+  ensureArabicFont(doc);
   addOfficialHeader(doc, 'Selected Grades Report', `${params.scopeLabel} • ${params.generatedAt}`, params.branding);
 
   autoTable(doc, {
     startY: 42,
     head: [['Élève', 'Classe', 'Matière', 'Épreuve', 'Trim.', 'Score', 'Coef.', 'Date']],
     body: params.results.map((result) => [
-      params.studentDirectory.get(result.studentId)?.fullName || 'Élève inconnu',
-      result.classId,
-      result.subject,
-      result.examLabel,
+      safeArabic(doc, params.studentDirectory.get(result.studentId)?.fullName || 'Élève inconnu'),
+      safeArabic(doc, result.classId),
+      safeArabic(doc, result.subject),
+      safeArabic(doc, result.examLabel),
       `T${result.trimester}`,
       result.score.toFixed(2),
       (result.coefficient ?? 1).toFixed(2),
       result.recordedAt,
     ]),
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8 },
+    styles: { fontSize: 8, font: ARABIC_FONT_NAME },
   });
 
   const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 160;
@@ -282,10 +289,19 @@ export const buildCertificatePdfAttachment = (params: {
   doc.setFontSize(11);
   doc.text(`Référence officielle: ${reference}`, 14, 56);
   drawArabicText(doc, `المرجع الرسمي: ${reference}`, 196, 56, 11);
-  doc.text(`Élève: ${studentName}`, 14, 64);
+
+  doc.text(`Élève: `, 14, 64);
+  doc.setFont(ARABIC_FONT_NAME, 'normal');
+  doc.text(safeArabic(doc, studentName), 26, 64);
+  doc.setFont('helvetica', 'normal');
   drawArabicText(doc, `التلميذ: ${studentName}`, 196, 64, 11);
-  doc.text(`Classe: ${classId}`, 14, 72);
+
+  doc.text(`Classe: `, 14, 72);
+  doc.setFont(ARABIC_FONT_NAME, 'normal');
+  doc.text(safeArabic(doc, classId), 30, 72);
+  doc.setFont('helvetica', 'normal');
   drawArabicText(doc, `القسم: ${classId}`, 196, 72, 11);
+
   doc.text(`Moyenne Générale: ${average.toFixed(2)}/20`, 14, 80);
   drawArabicText(doc, `المعدل العام: ${average.toFixed(2)}/20`, 196, 80, 11);
 
@@ -293,15 +309,15 @@ export const buildCertificatePdfAttachment = (params: {
     startY: 88,
     head: [['Matière', 'Épreuve', 'Trim.', 'Score', 'Coef.', 'Date']],
     body: params.results.map((result) => [
-      result.subject,
-      result.examLabel,
+      safeArabic(doc, result.subject),
+      safeArabic(doc, result.examLabel),
       `T${result.trimester}`,
       result.score.toFixed(2),
       (result.coefficient ?? 1).toFixed(2),
       result.recordedAt,
     ]),
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 9 },
+    styles: { fontSize: 9, font: ARABIC_FONT_NAME },
   });
 
   const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 180;
@@ -360,6 +376,7 @@ export const buildSubjectReportPdfAttachment = (params: {
   branding?: SchoolBranding;
 }): AttachmentPayload => {
   const doc = new jsPDF();
+  ensureArabicFont(doc);
   addOfficialHeader(doc, `Subject Report — ${params.subjectName}`, `${params.scopeLabel} • ${params.generatedAt}`, params.branding);
 
   autoTable(doc, {
@@ -375,7 +392,7 @@ export const buildSubjectReportPdfAttachment = (params: {
       ['Excellence', String(params.overview.excellenceCount)],
     ],
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8.5 },
+    styles: { fontSize: 8.5, font: ARABIC_FONT_NAME },
   });
 
   autoTable(doc, {
@@ -384,15 +401,15 @@ export const buildSubjectReportPdfAttachment = (params: {
     body: params.studentRows.length > 0
       ? params.studentRows.map((row, index) => [
           String(index + 1),
-          row.student.fullName,
-          row.student.class,
+          safeArabic(doc, row.student.fullName),
+          safeArabic(doc, row.student.class),
           `${row.averageScore.toFixed(2)}/20`,
           String(row.recordedGrades),
           `${row.bestScore.toFixed(2)}/20`,
         ])
       : [['—', 'Aucune donnée', '—', '—', '—', '—']],
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8.5 },
+    styles: { fontSize: 8.5, font: ARABIC_FONT_NAME },
   });
 
   autoTable(doc, {
@@ -400,7 +417,7 @@ export const buildSubjectReportPdfAttachment = (params: {
     head: [['Trim.', 'Moyenne', 'Notes']],
     body: params.trendRows.map((row) => [row.trimester, `${row.averageScore.toFixed(2)}/20`, String(row.recordedGrades)]),
     headStyles: { fillColor: [...ACCENT] },
-    styles: { fontSize: 8.5 },
+    styles: { fontSize: 8.5, font: ARABIC_FONT_NAME },
   });
 
   autoTable(doc, {
@@ -408,9 +425,9 @@ export const buildSubjectReportPdfAttachment = (params: {
     head: [['Élève', 'Classe', 'Épreuve', 'Trim.', 'Score', 'Coef.', 'Date']],
     body: params.assessmentRows.length > 0
       ? params.assessmentRows.map((row) => [
-          row.student?.fullName || 'Élève inconnu',
-          row.classId,
-          row.examLabel,
+          safeArabic(doc, row.student?.fullName || 'Élève inconnu'),
+          safeArabic(doc, row.classId),
+          safeArabic(doc, row.examLabel),
           `T${row.trimester}`,
           row.score.toFixed(2),
           (row.coefficient ?? 1).toFixed(2),
@@ -418,7 +435,7 @@ export const buildSubjectReportPdfAttachment = (params: {
         ])
       : [['Aucune donnée', '—', '—', '—', '—', '—', '—']],
     headStyles: { fillColor: [...PRIMARY] },
-    styles: { fontSize: 8 },
+    styles: { fontSize: 8, font: ARABIC_FONT_NAME },
   });
 
   const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 220;

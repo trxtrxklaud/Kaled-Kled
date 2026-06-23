@@ -24,6 +24,7 @@ import {
 import { Label } from '../components/ui/label';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useData } from '../contexts/DataContext';
+import { useAuth } from '../contexts/AuthContext';
 import type { Post } from '../lib/types';
 import { toast } from 'sonner';
 import { Lightbox } from '../components/ui/lightbox';
@@ -34,11 +35,32 @@ const AUDIENCE_OPTIONS = ['Tout le monde', 'Enseignants', 'Parents', 'Classes sp
 
 const NewsFeed: React.FC = () => {
   const { t } = useLanguage();
-  const { posts, addPost, likePost, addComment, editPost, deletePost } = useData();
+  const { posts, addPost, likePost, addComment, editPost, deletePost, students } = useData();
+  const { user, isAdmin, isTeacher, isParent } = useAuth();
 
-  // Current user simulation (for permissions)
-  const currentUserRole = 'Administrateur';
-  const currentUserName = 'Mme. Fatima Zahra';
+  // Determine current user context
+  const currentUserRole = user?.role || 'staff';
+  const currentUserName = user?.name || 'Mme. Fatima Zahra';
+
+  // For parent filtering
+  const childClassMatch = isParent
+    ? students.find(s => user?.childrenIds?.includes(s.id))?.class
+    : null;
+
+  // Filter posts depending on role
+  const visiblePosts = posts.filter(post => {
+    if (isAdmin) return true;
+    if (isTeacher) return true; // Could filter by teacher's classes later
+    if (isParent) {
+      if (post.audience === 'Tout le monde') return true;
+      if (post.audience === 'Parents') return true;
+      if (post.audience.startsWith('Classes: ') && childClassMatch) {
+        return post.audience.includes(childClassMatch);
+      }
+      return false;
+    }
+    return true; // For staff, etc.
+  });
 
   // Form states for new post
   const [newContent, setNewContent] = useState('');
@@ -60,8 +82,6 @@ const NewsFeed: React.FC = () => {
   const [editImages, setEditImages] = useState<string[]>([]);
   const [deletePostId, setDeletePostId] = useState<string | null>(null);
 
-  const isAdmin = currentUserRole === 'Administrateur';
-
   // Handle file upload with dynamic previews
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -74,7 +94,7 @@ const NewsFeed: React.FC = () => {
       const { compressImageFile } = await import('../lib/imageCompressor');
       for (const file of Array.from(files)) {
         if (file.type.startsWith('image/')) {
-          const data = await compressImageFile(file, 1600, 0.7);
+          const data = await compressImageFile(file);
           newPreviews.push(data);
         }
       }
@@ -239,44 +259,47 @@ const NewsFeed: React.FC = () => {
         </div>
         <h2 className="text-2xl font-black tracking-tight">{t('news_feed')}</h2>
       {/* Visible action layout for Add/View/Edit/Delete/Close (cleanup) */}
-      <div className="flex flex-wrap gap-2 -mt-4">
-        <Button onClick={() => { const form = document.querySelector("textarea"); if(form) {form.focus(); form.scrollIntoView({behavior:"smooth"}); } }} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">+ Nouveau Post (Add)</Button>
-        <Button onClick={() => window.scrollTo({top: document.body.scrollHeight, behavior:"smooth"})} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">Voir tous (View)</Button>
-        <Button onClick={() => toast.info("Utilisez le menu ... sur chaque post pour Éditer/Supprimer (Close)")} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">Actions Éditer/Supprimer</Button>
-      </div>
+      {!isParent && (
+        <div className="flex flex-wrap gap-2 -mt-4">
+          <Button onClick={() => { const form = document.querySelector("textarea"); if(form) {form.focus(); form.scrollIntoView({behavior:"smooth"}); } }} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">+ Nouveau Post (Add)</Button>
+          <Button onClick={() => window.scrollTo({top: document.body.scrollHeight, behavior:"smooth"})} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">Voir tous (View)</Button>
+          <Button onClick={() => toast.info("Utilisez le menu ... sur chaque post pour Éditer/Supprimer (Close)")} variant="outline" size="sm" className="rounded-2xl text-[10px] font-black">Actions Éditer/Supprimer</Button>
+        </div>
+      )}
       </div>
 
       {/* 1. THE INPUT FORM (Nouveau Post) */}
-      <Card className="border-none shadow-xl shadow-slate-200/40 rounded-[2.5rem] bg-white">
-        <CardContent className="p-8 space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black">
-              {currentUserName.split(' ').map(n => n[0]).join('')}
+      {!isParent && (
+        <Card className="border-none shadow-xl shadow-slate-200/40 rounded-[2.5rem] bg-white">
+          <CardContent className="p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black">
+                {currentUserName.split(' ').map((n: string) => n[0]).join('')}
+              </div>
+              <div>
+                <p className="font-black text-sm">{currentUserName}</p>
+                <p className="text-[10px] text-slate-500">{currentUserRole}</p>
+              </div>
             </div>
-            <div>
-              <p className="font-black text-sm">{currentUserName}</p>
-              <p className="text-[10px] text-slate-500">{currentUserRole}</p>
-            </div>
-          </div>
 
-          <Textarea 
-            placeholder="Quoi de neuf ? Partagez une annonce, un rappel ou une photo..."
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            className="min-h-[100px] rounded-2xl bg-slate-50 border-slate-200 text-base"
-          />
+            <Textarea
+              placeholder="Quoi de neuf ? Partagez une annonce, un rappel ou une photo..."
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              className="min-h-[100px] rounded-2xl bg-slate-50 border-slate-200 text-base"
+            />
 
-          {/* Target Audience Selector */}
-          {renderAudienceSelector(
-            newAudience, 
-            newSelectedClasses, 
-            setNewAudience, 
-            setNewSelectedClasses
-          )}
+            {/* Target Audience Selector */}
+            {renderAudienceSelector(
+              newAudience,
+              newSelectedClasses,
+              setNewAudience,
+              setNewSelectedClasses
+            )}
 
-          {/* Image/File Upload Zone with Dynamic Previews */}
-          <div className="space-y-3">
-            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('images_files_optional')}</Label>
+            {/* Image/File Upload Zone with Dynamic Previews */}
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('images_files_optional')}</Label>
             
             <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center relative group hover:border-primary/30 transition-all">
               <input 
@@ -319,16 +342,17 @@ const NewsFeed: React.FC = () => {
           </Button>
         </CardContent>
       </Card>
+      )}
 
       {/* 2. THE FEED LIST (Display) */}
       <div className="space-y-6">
-        {posts.length === 0 && (
+        {visiblePosts.length === 0 && (
           <Card className="p-8 text-center rounded-[2.5rem]">
             <p className="text-slate-400">{t('no_posts_yet')}</p>
           </Card>
         )}
 
-        {posts.map((post) => {
+        {visiblePosts.map((post) => {
           const isExpanded = expandedPosts[post.id] || post.content.length < 180;
           const canManage = canManagePost(post);
 
@@ -578,6 +602,7 @@ const NewsFeed: React.FC = () => {
         isOpen={!!previewLightbox} 
         src={previewLightbox} 
         onClose={() => setPreviewLightbox(null)} 
+        filename="post_image"
       />
     </div>
   );

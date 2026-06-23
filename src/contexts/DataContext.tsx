@@ -1,6 +1,9 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { idbGet, idbSet } from '../lib/idb';
-import type { AcademicAsset, User, Student, AcademicResult, Employee, Exam, Announcement, Message, Timetable, ExamPlanningFile, AttendanceRecord, FinanceArrear, NewsItem, Homework, Post, Comment, EmailDeliveryLog, SchoolBranding, CertificateRegistryEntry, ScheduleCell, WeeklySchedule, WeeklyScheduleLocks, TimetableActionLog, StatisticsFilterPreset, ClassTimetableImages, EduservSyncLog, AppPreferences, AppLanguage, ImportStudentData, ImportFinanceData, ImportAcademicResultData, ImportExamScheduleData } from '../lib/types';
+import { auth, ensureAuth } from '../lib/firebase';
+import { isCloudKey, loadCloud, saveCloud, subscribeCloud } from '../lib/firestoreSync';
+import type { AcademicAsset, User, Student, AcademicResult, Employee, Exam, Announcement, Message, Timetable, ExamPlanningFile, AttendanceRecord, FinanceArrear, NewsItem, Homework, Post, Comment, EmailDeliveryLog, SchoolBranding, CertificateRegistryEntry, ScheduleCell, WeeklySchedule, WeeklyScheduleLocks, TimetableActionLog, StatisticsFilterPreset, ClassTimetableImages, EduservSyncLog, AppPreferences, AppLanguage, ImportStudentData, ImportFinanceData, ImportAcademicResultData, ImportExamScheduleData, ParentUser } from '../lib/types';
 import { toast } from 'sonner';
 import { safeOpenExternalLink } from '../lib/utils';
 import { parseSchoolLevel } from '../lib/academicAnalytics';
@@ -207,11 +210,13 @@ interface DataContextType {
   eduservSyncLogs: EduservSyncLog[];
   appPreferences: AppPreferences;
   authSessionUser: User | null;
+  parentUsers: ParentUser[];
   timetables: Timetable[];
   examPlanningFiles: ExamPlanningFile[];
   attendance: AttendanceRecord[];
   financeArrears: FinanceArrear[];
   academicAssets: AcademicAsset[];
+  isDataLoaded: boolean;
   addAcademicAsset: (asset: Omit<AcademicAsset, 'id'>) => void;
   removeAcademicAsset: (id: string) => void;
   addStudent: (student: Omit<Student, 'id'> & { id?: string }) => void;
@@ -257,6 +262,9 @@ interface DataContextType {
   clearEduservSyncLogs: () => void;
   updateAppLanguage: (language: AppLanguage) => void;
   setAuthSessionUser: (user: User | null) => void;
+  addParentUser: (parent: Omit<ParentUser, 'id'>) => void;
+  updateParentUser: (parent: ParentUser) => void;
+  deleteParentUser: (id: string) => void;
   addTimetable: (timetable: Omit<Timetable, 'id'>) => void;
   deleteTimetable: (id: string) => void;
   addExamPlanningFile: (file: Omit<ExamPlanningFile, 'id'>) => void;
@@ -282,8 +290,8 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 const DEFAULT_SCHOOL_BRANDING: SchoolBranding = {
-  schoolNameFr: 'Complexe La Providence',
-  schoolNameAr: 'مجمع لابروفيدانس',
+  schoolNameFr: 'المدرسة الابتدائية الخاصة العناية',
+  schoolNameAr: 'المدرسة الابتدائية الخاصة العناية',
   updatedAt: new Date().toISOString(),
 };
 
@@ -310,6 +318,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [statisticsFilterPresets, setStatisticsFilterPresets] = useState<StatisticsFilterPreset[]>([]);
   const [eduservSyncLogs, setEduservSyncLogs] = useState<EduservSyncLog[]>([]);
   const [appPreferences, setAppPreferences] = useState<AppPreferences>(DEFAULT_APP_PREFERENCES);
+  const [parentUsers, setParentUsers] = useState<ParentUser[]>([]);
   const [authSessionUser, setAuthSessionUserState] = useState<User | null>(null);
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [examPlanningFiles, setExamPlanningFiles] = useState<ExamPlanningFile[]>([]);
@@ -320,11 +329,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [academicAssets, setAcademicAssets] = useState<AcademicAsset[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+  // Tracks the last JSON we synced per key, to prevent echo loops
+  // between local saves and incoming real-time cloud snapshots.
+  const lastSyncedRef = React.useRef<Record<string, string>>({});
+
   // Load initial data
   useEffect(() => {
     async function loadInitiator() {
-      // Helper to fetch from IDB, fallback to localStorage if missing/null
+      // Make sure we have an authenticated Firebase session so the
+      // cloud reads/writes below are permitted by Firestore rules.
+      await ensureAuth();
+
+      // Helper to fetch a key. Priority: Firestore cloud (real backend,
+      // shared across devices) -> IndexedDB -> localStorage -> fallback.
       async function fetchOrFallback<T>(key: string, fallback: T): Promise<T> {
+        // 1) Cloud first for synced collections (genuine multi-device data)
+        if (isCloudKey(key)) {
+          const cloud = await loadCloud<T>(key);
+          if (cloud !== undefined && cloud !== null) {
+            lastSyncedRef.current[key] = JSON.stringify(cloud);
+            return cloud;
+          }
+        }
+        // 2) Local caches (also used as offline fallback)
         const idbVal = await idbGet<T>(key);
         if (idbVal !== null && idbVal !== undefined) return idbVal;
         const local = localStorage.getItem(key);
@@ -339,8 +366,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         { id: '2', fullName: 'Sarah Alami',     class: '1A', birthDate: '2015-08-22', parentName: 'Karim Alami',     parentPhone: '0687654321' },
       ].sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-      setStudents(await fetchOrFallback('providence_students', defaultStudents));
-      setAcademicResults(await fetchOrFallback('providence_academic_results', []));
+      const loadedStudents = await fetchOrFallback<Student[]>('providence_students', defaultStudents);
+      const studentNameMap = new Map<string, Student>();
+      for (const s of loadedStudents) {
+        studentNameMap.set((s.fullName || '').trim().toLowerCase(), s);
+      }
+      setStudents(Array.from(studentNameMap.values()).sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
+      const loadedAcResults = await fetchOrFallback<AcademicResult[]>('providence_academic_results', DEFAULT_ACADEMIC_RESULTS);
+      setAcademicResults(loadedAcResults.length > 0 ? loadedAcResults : DEFAULT_ACADEMIC_RESULTS);
       setEmployees(await fetchOrFallback('providence_employees', [
         { id: '1', fullName: 'Mme. Fatima Zahra', role: 'Directrice', type: 'Administration', phone: '0600112233' },
         { id: '2', fullName: 'M. Rachid Hamidi', role: 'Professeur de Français', type: 'Teacher', phone: '0611223344' },
@@ -359,6 +392,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStatisticsFilterPresets(await fetchOrFallback('providence_statistics_filter_presets', []));
       setEduservSyncLogs(await fetchOrFallback('providence_eduserv_sync_logs', []));
       setAppPreferences({ ...DEFAULT_APP_PREFERENCES, ...(await fetchOrFallback('providence_app_preferences', {})) });
+      setParentUsers(await fetchOrFallback('providence_parent_users', []));
       setAuthSessionUserState(await fetchOrFallback('providence_auth_session_user', null));
       setTimetables(await fetchOrFallback('providence_timetables', []));
       setExamPlanningFiles(await fetchOrFallback('providence_exam_planning', []));
@@ -394,7 +428,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Persistence
-  const safeSetItem = (key: string, value: any) => {
+  const safeSetItem = React.useCallback(async (key: string, value: unknown) => {
     if (!isDataLoaded) return;
     try {
       localStorage.setItem(key, JSON.stringify(value));
@@ -405,35 +439,102 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     
-    // Also save seamlessly to IndexedDB locally for enterprise-scale
+    // Also save seamlessly to IndexedDB locally (offline cache)
     idbSet(key, value).catch(console.error);
-  };
 
-  useEffect(() => safeSetItem('providence_students', students), [students]);
-  useEffect(() => safeSetItem('providence_academic_results', academicResults), [academicResults]);
-  useEffect(() => safeSetItem('providence_employees', employees), [employees]);
-  useEffect(() => safeSetItem('providence_exams', exams), [exams]);
-  useEffect(() => safeSetItem('providence_announcements', announcements), [announcements]);
-  useEffect(() => safeSetItem('providence_news', news), [news]);
-  useEffect(() => safeSetItem('providence_messages', messages), [messages]);
-  useEffect(() => safeSetItem('providence_email_delivery_logs', emailDeliveryLogs), [emailDeliveryLogs]);
-  useEffect(() => safeSetItem('providence_school_branding', schoolBranding), [schoolBranding]);
-  useEffect(() => safeSetItem('providence_certificate_registry', certificateRegistry), [certificateRegistry]);
-  useEffect(() => safeSetItem('providence_weekly_schedule', weeklySchedule), [weeklySchedule]);
-  useEffect(() => safeSetItem('providence_weekly_schedule_locks', weeklyScheduleLocks), [weeklyScheduleLocks]);
-  useEffect(() => safeSetItem('providence_timetable_action_logs', timetableActionLogs), [timetableActionLogs]);
-  useEffect(() => safeSetItem('providence_class_timetable_images', classTimetableImages), [classTimetableImages]);
-  useEffect(() => safeSetItem('providence_statistics_filter_presets', statisticsFilterPresets), [statisticsFilterPresets]);
-  useEffect(() => safeSetItem('providence_eduserv_sync_logs', eduservSyncLogs), [eduservSyncLogs]);
-  useEffect(() => safeSetItem('providence_app_preferences', appPreferences), [appPreferences]);
-  useEffect(() => safeSetItem('providence_auth_session_user', authSessionUser), [authSessionUser]);
-  useEffect(() => safeSetItem('providence_timetables', timetables), [timetables]);
-  useEffect(() => safeSetItem('providence_exam_planning', examPlanningFiles), [examPlanningFiles]);
-  useEffect(() => safeSetItem('providence_attendance', attendance), [attendance]);
-  useEffect(() => safeSetItem('providence_finance', financeArrears), [financeArrears]);
-  useEffect(() => safeSetItem('providence_homeworks', homeworks), [homeworks]);
-  useEffect(() => safeSetItem('providence_posts', posts), [posts]);
-  useEffect(() => safeSetItem('providence_academic_assets', academicAssets), [academicAssets]);
+    // Real-time cloud sync: write the collection to Firestore so other
+    // devices/users receive the change live. Guarded against echo loops
+    // (skip when the value is identical to what we last synced).
+    if (isCloudKey(key)) {
+      const json = JSON.stringify(value);
+      if (lastSyncedRef.current[key] !== json) {
+        lastSyncedRef.current[key] = json;
+        await ensureAuth();
+        if (auth.currentUser) {
+          await saveCloud(key, value);
+        }
+      }
+    }
+  }, [isDataLoaded]);
+
+  useEffect(() => { safeSetItem('providence_students', students); }, [students, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_academic_results', academicResults); }, [academicResults, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_employees', employees); }, [employees, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_exams', exams); }, [exams, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_announcements', announcements); }, [announcements, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_news', news); }, [news, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_messages', messages); }, [messages, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_email_delivery_logs', emailDeliveryLogs); }, [emailDeliveryLogs, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_school_branding', schoolBranding); }, [schoolBranding, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_certificate_registry', certificateRegistry); }, [certificateRegistry, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_weekly_schedule', weeklySchedule); }, [weeklySchedule, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_weekly_schedule_locks', weeklyScheduleLocks); }, [weeklyScheduleLocks, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_timetable_action_logs', timetableActionLogs); }, [timetableActionLogs, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_class_timetable_images', classTimetableImages); }, [classTimetableImages, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_statistics_filter_presets', statisticsFilterPresets); }, [statisticsFilterPresets, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_eduserv_sync_logs', eduservSyncLogs); }, [eduservSyncLogs, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_app_preferences', appPreferences); }, [appPreferences, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_parent_users', parentUsers); }, [parentUsers, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_auth_session_user', authSessionUser); }, [authSessionUser, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_timetables', timetables); }, [timetables, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_exam_planning', examPlanningFiles); }, [examPlanningFiles, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_attendance', attendance); }, [attendance, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_finance', financeArrears); }, [financeArrears, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_homeworks', homeworks); }, [homeworks, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_posts', posts); }, [posts, safeSetItem]);
+  useEffect(() => { safeSetItem('providence_academic_assets', academicAssets); }, [academicAssets, safeSetItem]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Real-time cloud subscriptions: when another device changes data,
+  // update local state live. The lastSyncedRef guard ensures the
+  // resulting persistence effect does NOT echo the change back.
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    const setters: Record<string, (value: unknown) => void> = {
+      'providence_students': (v) => setStudents((v as Student[]) || []),
+      'providence_academic_results': (v) => setAcademicResults((v as AcademicResult[]) || []),
+      'providence_employees': (v) => setEmployees((v as Employee[]) || []),
+      'providence_exams': (v) => setExams((v as Exam[]) || []),
+      'providence_announcements': (v) => setAnnouncements((v as Announcement[]) || []),
+      'providence_messages': (v) => setMessages((v as Message[]) || []),
+      'providence_email_delivery_logs': (v) => setEmailDeliveryLogs((v as EmailDeliveryLog[]) || []),
+      'providence_school_branding': (v) => setSchoolBranding({ ...DEFAULT_SCHOOL_BRANDING, ...(v as Partial<SchoolBranding>) }),
+      'providence_certificate_registry': (v) => setCertificateRegistry((v as CertificateRegistryEntry[]) || []),
+      'providence_weekly_schedule': (v) => setWeeklySchedule((v as WeeklySchedule) || {}),
+      'providence_weekly_schedule_locks': (v) => setWeeklyScheduleLocks((v as WeeklyScheduleLocks) || {}),
+      'providence_timetable_action_logs': (v) => setTimetableActionLogs((v as TimetableActionLog[]) || []),
+      'providence_statistics_filter_presets': (v) => setStatisticsFilterPresets((v as StatisticsFilterPreset[]) || []),
+      'providence_eduserv_sync_logs': (v) => setEduservSyncLogs((v as EduservSyncLog[]) || []),
+      'providence_app_preferences': (v) => setAppPreferences({ ...DEFAULT_APP_PREFERENCES, ...(v as Partial<AppPreferences>) }),
+      'providence_parent_users': (v) => setParentUsers((v as ParentUser[]) || []),
+      'providence_finance': (v) => setFinanceArrears((v as FinanceArrear[]) || []),
+      'providence_attendance': (v) => setAttendance((v as AttendanceRecord[]) || []),
+      // Heavy / file-backed collections (synced via Firebase Storage blobs)
+      'providence_homeworks': (v) => setHomeworks((v as Homework[]) || []),
+      'providence_posts': (v) => setPosts((v as Post[]) || []),
+      'providence_news': (v) => setNews((v as NewsItem[]) || []),
+      'providence_academic_assets': (v) => setAcademicAssets((v as AcademicAsset[]) || []),
+      'providence_class_timetable_images': (v) => setClassTimetableImages((v as ClassTimetableImages) || {}),
+      'providence_timetables': (v) => setTimetables((v as Timetable[]) || []),
+      'providence_exam_planning': (v) => setExamPlanningFiles((v as ExamPlanningFile[]) || []),
+    };
+
+    const unsubscribers = Object.keys(setters)
+      .filter(isCloudKey)
+      .map((key) =>
+        subscribeCloud(key, (value) => {
+          if (value === null || value === undefined) return;
+          // Mark as already-synced so the persistence effect skips re-saving.
+          lastSyncedRef.current[key] = JSON.stringify(value);
+          setters[key](value);
+        }),
+      );
+
+    return () => unsubscribers.forEach((unsub) => unsub && unsub());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDataLoaded]);
 
   const addStudent = (student: Omit<Student, 'id'> & { id?: string }) => {
     const newStudent = { ...student, id: student.id || crypto.randomUUID() } as Student;
@@ -485,7 +586,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }).filter(Boolean) as Student[]; // filter out nulls where name was empty
 
-    setStudents(prev => [...prev, ...newStudents].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
+    setStudents(prev => {
+      const existingNames = new Set(prev.map(s => (s.fullName || '').trim().toLowerCase()));
+      const filteredNewStudents = newStudents.filter(s => {
+        const name = (s.fullName || '').trim().toLowerCase();
+        if (existingNames.has(name)) {
+          return false;
+        }
+        existingNames.add(name);
+        return true;
+      });
+      return [...prev, ...filteredNewStudents].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+    });
   };
 
   const normalizeAcademicResult = (result: AcademicResult): AcademicResult | null => {
@@ -554,23 +666,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const importAcademicResults = async (data: any[]) => {
     const { PRIMARY_CLASSES } = await import('../lib/constants');
+    const normalizeArabic = (str: string) => {
+      return str.trim().toLowerCase()
+        .replace(/[أإآا]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/\s+/g, ' '); // normalize multiple spaces
+    };
+
     const normalizedStudents = new Map<string, Student>();
     for (const student of students) {
       normalizedStudents.set(student.id, student);
-      normalizedStudents.set(`${student.fullName.toLowerCase().trim()}::${student.class}`, student);
+      normalizedStudents.set(`${normalizeArabic(student.fullName || '')}::${student.class}`, student);
     }
 
     const importedResults: AcademicResult[] = [];
+    const tempStudentNames = new Map<string, string>();
     const knownNonGradeColumns = new Set([
-      'student_id', 'studentid', 'full_name', 'fullname', 'class', 'classid', 'القسم', 'تلميذ', 'الاسم', 'trimester', 'coefficient', 'recorded_at', 'recordedat', 'subject', 'exam_label', 'examlabel'
+      'student_id', 'studentid', 'full_name', 'fullname', 'class', 'classid', 'القسم', 'تلميذ', 'الاسم', 'trimester', 'coefficient', 'recorded_at', 'recordedat', 'subject', 'exam_label', 'examlabel',
+      'éléve', 'élève', 'eleve', 'eleve', 'éléve', 'éleve', 'eleve', 'التلميذ'
     ]);
 
+    const findValue = (obj: any, keys: string[]) => {
+      const normalizeStr = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0621-\u0626]/g, "ا"); // Normalize Arabic hamzas to simple alef
+      const foundKey = Object.keys(obj).find(k => {
+        const normK = normalizeStr(k);
+        return keys.some(key => normK.includes(normalizeStr(key)) || k.toLowerCase().includes(key.toLowerCase()));
+      });
+      return foundKey ? obj[foundKey] : undefined;
+    };
+
     for (const row of data) {
-      const studentId = row.student_id || row.studentId || '';
+      const studentId = String(row.student_id || row.studentId || '');
       const rawClassId = String(row.class || row.classId || row['القسم'] || '').trim().toUpperCase();
-      const fullName = row.full_name || row.fullName || row['الاسم'] || row['تلميذ'] || '';
       
-      const linkedStudent = normalizedStudents.get(studentId) || normalizedStudents.get(`${fullName.toLowerCase().trim()}::${rawClassId}`);
+      const extractedName = row.full_name || row.fullName || row['الاسم'] || row['الإسم'] || row['تلميذ'] || row['التلميذ'] || row['Élève'] || row['élève'] || row['Eleve'] || row['eleve'] || findValue(row, ['اسم', 'الاسم', 'nom', 'prenom', 'name', 'تلميذ', 'التلميذ', 'eleve', 'طالب']) || '';
+      const fullName = String(extractedName).trim();
+
+      const linkedStudent = normalizedStudents.get(studentId) || normalizedStudents.get(`${normalizeArabic(fullName)}::${rawClassId}`);
       
       // Validation: must match 30 primary sections or be an existing student
       const classId = linkedStudent?.class || rawClassId;
@@ -580,47 +713,79 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const level = parseSchoolLevel(classId) || '1';
       
-      let score: number | null = null;
-      let subject = row.subject || 'Moyenne / المعدل';
-      
-      // If there's an explicit average, use it
-      const explicitScore = String(row.score ?? row.average ?? row['معدل'] ?? row.moyenne ?? '');
-      if (explicitScore.trim() !== '') {
-        score = Number.parseFloat(explicitScore);
-      } else {
-        // Fallback GradeCalc Engine
-        const numericValues: number[] = [];
-        for (const [key, value] of Object.entries(row)) {
-          if (knownNonGradeColumns.has(key.toLowerCase().trim())) continue;
-          const parsedValue = Number.parseFloat(String(value));
-          if (Number.isFinite(parsedValue) && parsedValue >= 0 && parsedValue <= 20) {
-            numericValues.push(parsedValue);
-          }
-        }
-        if (numericValues.length > 0) {
-          score = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+      let finalStudentId = linkedStudent?.id;
+      if (!finalStudentId) {
+        // Create or reuse a temp ID for this full name
+        const existingTemp = Array.from(tempStudentNames.entries()).find(([_, v]) => normalizeArabic(v) === normalizeArabic(fullName));
+        if (existingTemp) {
+          finalStudentId = existingTemp[0];
+        } else {
+          finalStudentId = `temp-${crypto.randomUUID()}`;
+          tempStudentNames.set(finalStudentId, fullName);
         }
       }
-
-      const trimester = Number.parseInt(String(row.trimester ?? '1'), 10);
+      
+      const trimester = Number.parseInt(String(row.trimester ?? row.trimestre ?? '1'), 10);
       const coefficient = Number.parseFloat(String(row.coefficient ?? '1'));
 
-      if (!Number.isFinite(score) || score === null || score < 0 || score > 20 || ![1, 2, 3].includes(trimester)) {
-        continue;
-      }
+      const isFlatFormat = row.subject && (row.grade !== undefined || row.score !== undefined);
 
-      importedResults.push({
-        id: crypto.randomUUID(),
-        studentId: linkedStudent?.id || `temp-${crypto.randomUUID()}`, // if student doesn't exist, we'd need to create them? "assign it to the student". I'll create a student if not found?
-        classId,
-        level,
-        subject,
-        examLabel: row.exam_label || row.examLabel || 'Évaluation importée',
-        trimester: trimester as 1 | 2 | 3,
-        score,
-        coefficient: Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1,
-        recordedAt: row.recorded_at || row.recordedAt || new Date().toISOString().split('T')[0],
-      });
+      if (isFlatFormat) {
+        const subject = String(row.subject);
+        const gradeValue = row.grade !== undefined ? row.grade : row.score;
+        let valStr = String(gradeValue).replace(/,/g, '.').trim();
+        valStr = valStr.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()); // Handle Arabic numerals
+
+        let parsedValue = Number.parseFloat(valStr);
+        if (valStr.toLowerCase() === 'absent' || valStr === 'غائب' || valStr === 'غ' || valStr.toLowerCase() === 'abs') {
+          parsedValue = 0;
+        }
+
+        if (Number.isFinite(parsedValue) && parsedValue >= 0 && parsedValue <= 20 && [1, 2, 3, 4].includes(trimester)) {
+          importedResults.push({
+            id: crypto.randomUUID(),
+            studentId: finalStudentId,
+            classId,
+            level,
+            subject: subject,
+            examLabel: row.exam_label || row.examLabel || row.notes || 'Évaluation importée',
+            trimester: trimester as 1 | 2 | 3 | 4,
+            score: parsedValue,
+            coefficient: Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1,
+            recordedAt: row.recorded_at || row.recordedAt || row.export_date || new Date().toISOString().split('T')[0],
+          });
+        }
+      } else {
+        // Look for any subject keys
+        for (const [key, value] of Object.entries(row)) {
+          const lowerKey = key.toLowerCase().trim();
+          // Skip metadata columns and averages since they should be calculated
+          if (knownNonGradeColumns.has(lowerKey) || lowerKey === 'معدل' || lowerKey.includes('معدل') || lowerKey.includes('moyenne') || lowerKey === 'average') continue;
+
+          let valStr = String(value).replace(/,/g, '.').trim();
+          valStr = valStr.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()); // Handle Arabic numerals
+
+          let parsedValue = Number.parseFloat(valStr);
+          if (valStr.toLowerCase() === 'absent' || valStr === 'غائب' || valStr === 'غ' || valStr.toLowerCase() === 'abs') {
+            parsedValue = 0;
+          }
+
+          if (Number.isFinite(parsedValue) && parsedValue >= 0 && parsedValue <= 20 && [1, 2, 3, 4].includes(trimester)) {
+            importedResults.push({
+              id: crypto.randomUUID(),
+              studentId: finalStudentId,
+              classId,
+              level,
+              subject: key, // Use the column name as subject
+              examLabel: row.exam_label || row.examLabel || 'Évaluation importée',
+              trimester: trimester as 1 | 2 | 3 | 4,
+              score: parsedValue,
+              coefficient: Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1,
+              recordedAt: row.recorded_at || row.recordedAt || new Date().toISOString().split('T')[0],
+            });
+          }
+        }
+      }
     }
 
     if (importedResults.length === 0) {
@@ -632,15 +797,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     toast.info(`Importing ${importedResults.length} records in batches...`);
     
     // Create new students if temporary IDs were assigned
-    const newStudents: Student[] = [];
+    const newStudentsMap = new Map<string, Student>();
     const newResults = [...importedResults];
     for (const res of newResults) {
-      if (res.studentId.startsWith('temp-')) {
-        const correspondingRow = data.find(r => 
-          (String(r.class || r.classId || r['القسم'] || '').trim().toUpperCase() === res.classId) && 
-          ((r.full_name || r.fullName || r['الاسم'] || r['تلميذ'] || '') !== '')
-        );
-        const name = correspondingRow ? (correspondingRow.full_name || correspondingRow.fullName || correspondingRow['الاسم'] || correspondingRow['تلميذ']) : `Élève Inconnu`;
+      if (res.studentId.startsWith('temp-') && !newStudentsMap.has(res.studentId)) {
+        const name = tempStudentNames.get(res.studentId) || `Élève Inconnu`;
         
         const newStudent: Student = {
           id: res.studentId, // keep the same ID so result links properly
@@ -650,13 +811,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           parentName: 'Non renseigné',
           parentPhone: ''
         };
-        newStudents.push(newStudent);
+        newStudentsMap.set(res.studentId, newStudent);
       }
     }
     
     // Actually add students synchronously to memory (IDB syncs later)
-    if (newStudents.length > 0) {
-      setStudents(prev => [...prev, ...newStudents].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
+    if (newStudentsMap.size > 0) {
+      setStudents(prev => [...prev, ...Array.from(newStudentsMap.values())].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
     }
     
     // Helper function to process in chunks
@@ -667,7 +828,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const batches = chunkArray(newResults, 100);
-    let allProcessedResults: AcademicResult[] = [];
+    const allProcessedResults: AcademicResult[] = [];
     
     const processBatch = (index: number) => {
       if (index >= batches.length) {
@@ -746,7 +907,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }).filter(Boolean) as Employee[];
 
-    setEmployees(prev => [...prev, ...newEmployees].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')));
+    setEmployees(prev => {
+      const existingNames = new Set(prev.map(e => (e.fullName || '').trim().toLowerCase()));
+      const filteredNewEmployees = newEmployees.filter(e => {
+        const name = (e.fullName || '').trim().toLowerCase();
+        if (existingNames.has(name)) {
+          return false;
+        }
+        existingNames.add(name);
+        return true;
+      });
+      return [...prev, ...filteredNewEmployees].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+    });
   };
 
   const addExam = (exam: Omit<Exam, 'id'>) => {
@@ -983,6 +1155,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthSessionUserState(user);
   };
 
+  const addParentUser = (parent: Omit<ParentUser, 'id'>) => {
+    const newParent = { ...parent, id: crypto.randomUUID() };
+    setParentUsers(prev => [...prev, newParent]);
+  };
+
+  const updateParentUser = (parent: ParentUser) => {
+    setParentUsers(prev => prev.map(p => p.id === parent.id ? parent : p));
+  };
+
+  const deleteParentUser = (id: string) => {
+    setParentUsers(prev => prev.filter(p => p.id !== id));
+  };
+
   const addTimetable = (timetable: Omit<Timetable, 'id'>) => {
     const newTimetable = { ...timetable, id: crypto.randomUUID() };
     setTimetables(prev => [newTimetable, ...prev]);
@@ -1162,6 +1347,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{ 
+      isDataLoaded,
       academicAssets, addAcademicAsset, removeAcademicAsset,
       students, academicResults, employees, exams, announcements, news, messages, emailDeliveryLogs, schoolBranding, certificateRegistry, weeklySchedule, weeklyScheduleLocks, timetableActionLogs, classTimetableImages, statisticsFilterPresets, eduservSyncLogs, appPreferences, authSessionUser, timetables, examPlanningFiles, attendance, financeArrears,
       addStudent, updateStudent, deleteStudent, importStudents,
@@ -1190,6 +1376,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearEduservSyncLogs,
       updateAppLanguage,
       setAuthSessionUser,
+      parentUsers,
+      addParentUser,
+      updateParentUser,
+      deleteParentUser,
       addTimetable,
       deleteTimetable,
       addExamPlanningFile,

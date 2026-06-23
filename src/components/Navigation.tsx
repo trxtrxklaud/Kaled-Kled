@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy } from 'lucide-react';
+import { LayoutDashboard, Users, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy, Database } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,7 +22,7 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
     { icon: Trophy, label: isRTL ? 'النتائج' : 'Résultats', path: '/results' },
     { icon: FileText, label: t('homework'), path: '/homework' },
     { icon: MessageCircle, label: t('news_feed'), path: '/newsfeed' },
-    { icon: RefreshCw, label: t('eduserv'), path: '/eduserv' },
+    { icon: RefreshCw, label: isRTL ? 'المنظومة (CNTE)' : 'Madrassati CNTE', path: '/eduserv' },
     { icon: MessageSquare, label: t('communication'), path: '/communication' },
     { icon: FileBadge, label: t('certificates'), path: '/certificates' },
     { icon: Files, label: t('certificate_registry'), path: '/certificate-registry' },
@@ -31,16 +31,24 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   // Add Finance item only for Admin (Tier 1)
   if (canModifySystem) {
     navItems.push({ icon: School, label: t('school_header'), path: '/school-header' });
+    navItems.push({ icon: Database, label: isRTL ? 'قاعدة البيانات' : 'Base de données', path: '/settings' });
   }
 
   if (canAccessFinance) {
     navItems.push({ icon: DollarSign, label: t('finance'), path: '/finance' });
   }
 
+  let filteredNavItems = navItems;
+  if (useAuth().isParent) {
+    filteredNavItems = [
+      { icon: LayoutDashboard, label: t('dashboard'), path: '/' }
+    ];
+  }
+
   if (isSidebar) {
     return (
       <nav className="flex flex-col gap-2 mt-4">
-        {navItems.map((item) => (
+        {filteredNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -78,41 +86,35 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-xl border-t border-slate-100 px-2 py-2 z-50 safe-area-bottom shadow-lg print:hidden">
-      <div className="flex justify-around items-center overflow-x-auto no-scrollbar gap-1 custom-nav-scroll">
-        {navItems.map((item) => (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 safe-area-bottom w-[95%] max-w-md print:hidden lg:hidden">
+      <nav className="bg-[#1e1b4b]/95 backdrop-blur-xl rounded-full px-4 py-3 shadow-[0_20px_40px_-5px_rgba(30,27,75,0.4)] flex justify-around items-center border border-white/10 no-scrollbar overflow-x-auto">
+        {filteredNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
-            className="flex flex-col items-center justify-center py-2 px-1 rounded-2xl min-w-[70px] relative transition-colors"
+            className="flex flex-col items-center justify-center relative transition-transform active:scale-95"
           >
             {({ isActive }) => (
               <div className={cn(
-                "flex flex-col items-center justify-center transition-all duration-300 w-full rounded-2xl",
-                isActive ? "text-primary scale-110" : "text-muted-foreground hover:text-foreground"
+                "flex items-center justify-center transition-all duration-300 rounded-full p-2.5",
+                isActive ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
               )}>
                 <item.icon 
-                  className={cn("w-5 h-5 mb-1.5", isActive ? "fill-primary/20" : "")} 
+                  className={cn("w-6 h-6", isActive ? "text-accent drop-shadow-[0_0_8px_rgba(251,191,36,0.5)] fill-accent/20" : "")}
                   strokeWidth={isActive ? 2.5 : 2} 
                 />
-                <span className={cn(
-                  "text-[9px] font-bold uppercase tracking-widest leading-none",
-                  isActive ? "opacity-100" : "opacity-0 h-0 transition-all duration-300"
-                )}>
-                  {item.label}
-                </span>
                 {isActive && (
                   <motion.div 
                     layoutId="nav-pill" 
-                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-t-full" 
+                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-accent rounded-full shadow-[0_0_8px_rgba(251,191,36,0.8)]"
                   />
                 )}
               </div>
             )}
           </NavLink>
         ))}
-      </div>
-    </nav>
+      </nav>
+    </div>
   );
 };
 
