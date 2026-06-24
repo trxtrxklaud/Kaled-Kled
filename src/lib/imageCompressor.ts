@@ -1,10 +1,22 @@
+export const SUPPORTED_TYPES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+  'image/webp', 'image/bmp', 'image/svg+xml', 'image/tiff',
+  'image/avif', 'image/heic', 'image/heif'
+];
+
+const MAX_DISPLAY_SIZE = 800; // px — resize before storing
+const MAX_STORAGE_KB = 200;   // kb — compress before localStorage
+
+/**
+ * Compress any image to safe size using Canvas
+ * @param {File} file - The image file to compress
+ * @returns {Promise<string>} base64 compressed image
+ */
 export const compressImageFile = async (
-  file: File,
-  maxWidth = 1600,
-  quality = 0.7
+  file: File
 ): Promise<string> => {
-  // Ne pas traiter les fichiers non-image
-  if (!file.type.startsWith("image/")) {
+  if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
+    // Return document as data URL without compression if not an image
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
@@ -13,33 +25,6 @@ export const compressImageFile = async (
     });
   }
 
-  // 🔧 SEUIL DE SÉCURITÉ : si le fichier dépasse 20 Mo, retour direct sans compression
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 Mo
-  if (file.size > MAX_FILE_SIZE) {
-    console.warn("[compressImage] Fichier trop volumineux, retour sans compression :", (file.size / 1024 / 1024).toFixed(1), "Mo");
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // 🔧 Compression adaptative selon la taille du fichier
-  let effectiveMaxWidth = maxWidth;
-  let effectiveQuality = quality;
-
-  if (file.size > 10 * 1024 * 1024) {
-    // > 10 Mo → compression agressive
-    effectiveMaxWidth = 1200;
-    effectiveQuality = 0.5;
-  } else if (file.size > 5 * 1024 * 1024) {
-    // > 5 Mo → compression modérée
-    effectiveMaxWidth = 1400;
-    effectiveQuality = 0.6;
-  }
-
-  // 🔧 Utiliser URL.createObjectURL au lieu de readAsDataURL (bien plus léger en mémoire)
   const objectUrl = URL.createObjectURL(file);
 
   try {
@@ -47,15 +32,15 @@ export const compressImageFile = async (
       const img = new Image();
 
       img.onload = () => {
-        // Libérer immédiatement l'URL objet
         URL.revokeObjectURL(objectUrl);
 
         let width = img.width;
         let height = img.height;
 
-        if (width > effectiveMaxWidth) {
-          height = Math.round((height * effectiveMaxWidth) / width);
-          width = effectiveMaxWidth;
+        if (width > MAX_DISPLAY_SIZE || height > MAX_DISPLAY_SIZE) {
+          const ratio = Math.min(MAX_DISPLAY_SIZE / width, MAX_DISPLAY_SIZE / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
         }
 
         const canvas = document.createElement("canvas");
@@ -64,7 +49,6 @@ export const compressImageFile = async (
 
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          // Fallback : retourner le fichier original
           const fallbackReader = new FileReader();
           fallbackReader.onload = (e) => resolve(e.target?.result as string);
           fallbackReader.onerror = reject;
@@ -72,23 +56,25 @@ export const compressImageFile = async (
           return;
         }
 
-        // Fond blanc pour éviter la transparence en JPEG
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        const compressedDataUrl = canvas.toDataURL("image/jpeg", effectiveQuality);
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        let quality = 0.8;
+        
+        let result = canvas.toDataURL(outputType, quality);
+        while (result.length > MAX_STORAGE_KB * 1024 * 1.37 && quality > 0.3) {
+          quality -= 0.1;
+          result = canvas.toDataURL(outputType, quality);
+        }
 
-        // 🔧 Nettoyage mémoire explicite
         canvas.width = 0;
         canvas.height = 0;
 
-        resolve(compressedDataUrl);
+        resolve(result);
       };
 
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-        // Fallback : retourner le fichier original
         const fallbackReader = new FileReader();
         fallbackReader.onload = (e) => resolve(e.target?.result as string);
         fallbackReader.onerror = reject;
@@ -100,8 +86,7 @@ export const compressImageFile = async (
 
     return compressedDataUrl;
   } catch (error) {
-    console.error("[compressImage] Erreur :", error);
-    // Fallback ultime
+    console.error("[compressImage] Error:", error);
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);

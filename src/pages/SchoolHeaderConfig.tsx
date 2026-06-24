@@ -25,7 +25,7 @@ const SchoolHeaderConfig: React.FC = () => {
     try {
       if (file.type.startsWith('image/')) {
         const { compressImageFile } = await import('../lib/imageCompressor');
-        const dataUrl = await compressImageFile(file, 800, 0.8);
+        const dataUrl = await compressImageFile(file);
         updateSchoolBranding({ [field]: dataUrl });
       } else {
         const reader = new FileReader();

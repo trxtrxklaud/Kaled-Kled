@@ -53,6 +53,55 @@ export const safeOpenExternalLink = (url: string) => {
   }, 100);
 };
 
+export const downloadFile = (dataUrl: string, filename: string) => {
+  if (!dataUrl) return;
+  
+  try {
+    // If it's a data URL, convert to Blob
+    let urlToDownload = dataUrl;
+    let isObjectUrl = false;
+    
+    if (dataUrl.startsWith('data:')) {
+      const arr = dataUrl.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : '';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      urlToDownload = URL.createObjectURL(blob);
+      isObjectUrl = true;
+    }
+
+    const a = document.createElement('a');
+    a.href = urlToDownload;
+    a.download = filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    
+    setTimeout(() => {
+      document.body.removeChild(a);
+      if (isObjectUrl) {
+        URL.revokeObjectURL(urlToDownload);
+      }
+    }, 100);
+  } catch (err) {
+    console.error('Error downloading file:', err);
+    // Fallback if data is not large or simply fails
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+    }, 100);
+  }
+};
+
 export const printHtmlContent = (htmlContent: string, title: string = 'Document') => {
   const printWindow = window.open('', '_blank');
   

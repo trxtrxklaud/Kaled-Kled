@@ -16,6 +16,7 @@ import CertificateRegistryPage from "./pages/CertificateRegistry";
 import SchoolHeaderConfig from "./pages/SchoolHeaderConfig";
 import Finance from "./pages/Finance";
 import PrivateRoute from "./components/PrivateRoute";
+import Settings from "./pages/Settings";
 
 function App() {
   return (
@@ -25,18 +26,22 @@ function App() {
         
         <Route element={<Layout />}>
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/admin" element={<PrivateRoute allowedRoles={['admin', 'staff']}><Dashboard /></PrivateRoute>} />
+          <Route path="/teacher" element={<PrivateRoute allowedRoles={['teacher']}><Dashboard /></PrivateRoute>} />
+          <Route path="/parent" element={<PrivateRoute allowedRoles={['parent']}><Dashboard /></PrivateRoute>} />
           <Route path="/students" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Students /></PrivateRoute>} />
           <Route path="/employees" element={<PrivateRoute allowedRoles={['admin', 'staff']}><Employees /></PrivateRoute>} />
           <Route path="/parents" element={<PrivateRoute allowedRoles={['admin', 'staff']}><Parents /></PrivateRoute>} />
-          <Route path="/schedules" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Schedules /></PrivateRoute>} />
-          <Route path="/homework" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><HomeworkPage /></PrivateRoute>} />
-          <Route path="/newsfeed" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><NewsFeed /></PrivateRoute>} />
+          <Route path="/schedules" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher', 'parent']}><Schedules /></PrivateRoute>} />
+          <Route path="/homework" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher', 'parent']}><HomeworkPage /></PrivateRoute>} />
+          <Route path="/newsfeed" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher', 'parent']}><NewsFeed /></PrivateRoute>} />
           <Route path="/eduserv" element={<PrivateRoute allowedRoles={['admin', 'staff']}><EduservIntegration /></PrivateRoute>} />
           <Route path="/communication" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Communication /></PrivateRoute>} />
-          <Route path="/results" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher']}><Results /></PrivateRoute>} />
+          <Route path="/results" element={<PrivateRoute allowedRoles={['admin', 'staff', 'teacher', 'parent']}><Results /></PrivateRoute>} />
           <Route path="/certificates" element={<PrivateRoute allowedRoles={['admin', 'staff']}><CertificatesPage /></PrivateRoute>} />
           <Route path="/certificate-registry" element={<PrivateRoute allowedRoles={['admin', 'staff']}><CertificateRegistryPage /></PrivateRoute>} />
           <Route path="/school-header" element={<PrivateRoute allowedRoles={['admin']}><SchoolHeaderConfig /></PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute allowedRoles={['admin']}><Settings /></PrivateRoute>} />
           <Route path="/finance" element={<PrivateRoute allowedRoles={['admin']}><Finance /></PrivateRoute>} />
         </Route>
 

@@ -84,7 +84,7 @@ const Employees: React.FC = () => {
         const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         
-        // @ts-ignore
+        // @ts-expect-error Typescript checking
         const fileHandle = await window.showSaveFilePicker({
           suggestedName: defaultFilename,
           types: [{
@@ -100,8 +100,8 @@ const Employees: React.FC = () => {
         XLSX.writeFile(workbook, defaultFilename);
         toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
       }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name !== 'AbortError') {
         console.error(error);
         toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
       }

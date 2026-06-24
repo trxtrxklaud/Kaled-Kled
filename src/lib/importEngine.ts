@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-escape */
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import type { ImportAcademicResultData, ImportExamScheduleData } from './types';
 
