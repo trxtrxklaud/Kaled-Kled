@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ImportStudentData } from '../lib/types';
-import { useData } from '../contexts/DataContext';
+import { useAcademicStore } from '../stores/academicStore';
+import { useStudentStore } from '../stores/studentStore';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -61,7 +62,15 @@ const CLASSES = [
 const SERVER_BASE_URL = 'https://school.providence.ma/files/';
 
 const Students: React.FC = () => {
-  const { students, addStudent, updateStudent, deleteStudent, importStudents, attendance, markAttendance, homeworks } = useData();
+  const attendance = useStudentStore(state => state.attendance);
+  const { homeworks } = useAcademicStore();
+  const markAttendance = (r: any) => useStudentStore.getState().recordAttendance(r);
+  const students = useStudentStore(state => state.students);
+  const addStudent = useStudentStore(state => state.addStudent);
+  const updateStudent = useStudentStore(state => state.updateStudent);
+  const deleteStudent = useStudentStore(state => state.deleteStudent);
+  const bulkDeleteStudents = useStudentStore(state => state.bulkDeleteStudents);
+  const importStudents = useStudentStore(state => state.importStudents);
   const { isAdmin, isStaff, isTeacher, assignedClasses } = useAuth();
   const { t, isRTL } = useLanguage();
   
@@ -174,14 +183,25 @@ const Students: React.FC = () => {
     setSelectedIds(newSelected);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const idsToDelete = Array.from(selectedIds);
     const toDelete = students.filter(s => idsToDelete.includes(s.id));
     setDeletedStack(prev => [...prev, toDelete]);
-    idsToDelete.forEach(id => deleteStudent(id));
+    await bulkDeleteStudents(idsToDelete);
     setSelectedIds(new Set());
-    toast.success(isRTL ? 'تم الحذف بنجاح' : 'Supprimé avec succès');
+  };
+  
+  const handleDeleteClass = async () => {
+    const classStudentsIds = students.filter(s => s.class === selectedClass).map(s => s.id);
+    if (classStudentsIds.length === 0) return;
+    
+    if (window.confirm(isRTL ? 'هل أنت متأكد من حذف جميع تلاميذ هذا القسم؟' : 'Êtes-vous sûr de vouloir supprimer tous les élèves de cette classe ?')) {
+      const toDelete = students.filter(s => classStudentsIds.includes(s.id));
+      setDeletedStack(prev => [...prev, toDelete]);
+      await bulkDeleteStudents(classStudentsIds);
+      setSelectedIds(new Set());
+    }
   };
 
   const getTodayAttendance = (studentId: string) => {
@@ -191,7 +211,7 @@ const Students: React.FC = () => {
   };
 
   const handleMarkAttendance = (studentId: string, present: boolean) => {
-    markAttendance(studentId, present);
+    markAttendance({ studentId, present, classId: selectedClass, date: new Date().toISOString().split('T')[0] });
   };
 
   const handlePrintStudent = (student: Student) => {
@@ -256,7 +276,7 @@ const Students: React.FC = () => {
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingStudent) {
-      updateStudent({ ...formData, id: editingStudent.id });
+      updateStudent(editingStudent.id, { ...formData, id: editingStudent.id });
     } else {
       addStudent(formData);
     }
@@ -285,17 +305,17 @@ const Students: React.FC = () => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls') && !fileName.endsWith('.csv') && !fileName.endsWith('.html') && !fileName.endsWith('.htm')) {
-      toast.error('Format de fichier non supporté. Veuillez utiliser un fichier XLSX, XLS, CSV, HTML ou HTM.');
-      e.target.value = '';
-      return;
-    }
-
     try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const fileName = file.name.toLowerCase();
+      if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls') && !fileName.endsWith('.csv') && !fileName.endsWith('.html') && !fileName.endsWith('.htm')) {
+        toast.error('Format de fichier non supporté. Veuillez utiliser un fichier XLSX, XLS, CSV, HTML ou HTM.');
+        if (e.target) e.target.value = '';
+        return;
+      }
+
       if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
         const text = await file.text();
         const doc = new DOMParser().parseFromString(text, 'text/html');
@@ -313,36 +333,27 @@ const Students: React.FC = () => {
         });
         
         if (rows.length > 0) {
-          importStudents(rows as ImportStudentData[], selectedClass || undefined);
-          toast.success(t('success_import'));
+          await importStudents(rows as ImportStudentData[], selectedClass || undefined);
           setIsImportDialogOpen(false);
         } else {
           toast.error(t('no_data'));
         }
       } else {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          try {
-            const bstr = evt.target?.result;
-            const wb = XLSX.read(bstr, { type: 'binary' });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            const data = XLSX.utils.sheet_to_json(ws);
-            
-            if (data.length > 0) {
-              importStudents(data as ImportStudentData[], selectedClass || undefined);
-              toast.success(t('success_import'));
-              setIsImportDialogOpen(false);
-            } else {
-              toast.error(t('no_data'));
-            }
-          } catch {
-            toast.error(t('error_import'));
-          }
-        };
-        reader.readAsBinaryString(file);
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        if (data.length > 0) {
+          await importStudents(data, selectedClass || undefined);
+          setIsImportDialogOpen(false);
+        } else {
+          toast.error(t('no_data'));
+        }
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error(t('error_import'));
     } finally {
       if (e.target) {
@@ -475,6 +486,15 @@ const Students: React.FC = () => {
           >
             <Save className="w-4 h-4 mr-2" /> {isRTL ? 'إسترجاع و تحديث المعطيات' : 'Enregistrer'}
           </Button>
+          {canModify && (
+            <Button 
+              variant="destructive" 
+              className="h-10 sm:h-11 px-4 rounded-full shadow-sm font-semibold text-xs"
+              onClick={handleDeleteClass}
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> {isRTL ? 'حذف القسم' : 'Supprimer la classe'}
+            </Button>
+          )}
           {canModify && selectedIds.size > 0 && (
             <Button 
               variant="destructive" 

@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect } from 'react';
-import { useData } from './DataContext';
+
 import type { AppLanguage } from '../lib/types';
 
 type Language = AppLanguage;
@@ -438,7 +438,10 @@ const translations: Record<Language, Record<string, string>> = {
 };
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { appPreferences, updateAppLanguage } = useData();
+  const appPreferences = { language: 'fr' as AppLanguage };
+  const updateAppLanguage = (lang: string) => {
+    import('../stores/settingsStore').then(m => m.useSettingsStore.getState().updateAppPreferences({ language: lang as AppLanguage }));
+  };
   const language = appPreferences.language;
 
   useEffect(() => {

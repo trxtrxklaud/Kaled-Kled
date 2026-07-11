@@ -15,10 +15,6 @@ const Settings: React.FC = () => {
   const [cloudItemsCount, setCloudItemsCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    checkCloudStatus();
-  }, []);
-
   const checkCloudStatus = async () => {
     setCloudStatus('checking');
     if (!auth.currentUser) {
@@ -34,7 +30,13 @@ const Settings: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkCloudStatus();
+  }, []);
+
   const handleCloudRestore = async () => {
+
     if (cloudStatus !== 'connected') {
       toast.error(isRTL ? 'الرجاء التأكد من تسجيل الدخول للاتصال السحابي' : 'Veuillez vous assurer que vous êtes connecté pour le cloud');
       return;

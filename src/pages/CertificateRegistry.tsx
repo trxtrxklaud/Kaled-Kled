@@ -1,5 +1,9 @@
+import { useAcademicStore } from '../stores/academicStore';
+import { useSettingsStore } from "../stores/settingsStore";
+import { useCommunicationStore } from "../stores/communicationStore";
+import { useStudentStore } from "../stores/studentStore";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Button } from '../components/ui/button';
@@ -19,15 +23,11 @@ import { sendEmailWithAttachments } from '../lib/emailDelivery';
 const FILTER_ALL = 'all';
 
 const CertificateRegistryPage: React.FC = () => {
-  const {
-    certificateRegistry,
-    students,
-    academicResults,
-    schoolBranding,
-    addEmailDeliveryLog,
-    addCertificateRegistryEntries,
-    revokeCertificateRegistryEntry,
-  } = useData();
+  const { students, academicResults } = useStudentStore();
+  const { schoolBranding } = useSettingsStore();
+  const { addEmailDeliveryLog } = useCommunicationStore();
+  const { certificateRegistry, addCertificateRegistryEntries, revokeCertificateRegistryEntry } = useAcademicStore();
+  
   const { isRTL } = useLanguage();
   const managerEmail = import.meta.env.VITE_MANAGER_EMAIL || '';
   const filteredSelectAllRef = useRef<HTMLInputElement | null>(null);

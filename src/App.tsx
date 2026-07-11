@@ -1,4 +1,31 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useWakeLock } from "./lib/useWakeLock";
+
+function RoutePersistence() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const isInitialLoad = !sessionStorage.getItem('app_initialized');
+    const savedPath = localStorage.getItem('lastPath');
+    
+    if (isInitialLoad) {
+      sessionStorage.setItem('app_initialized', 'true');
+      if (savedPath && savedPath !== '/' && savedPath !== '/login' && location.pathname === '/') {
+        navigate(savedPath, { replace: true });
+      }
+    }
+  }, [navigate, location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname !== '/login') {
+      localStorage.setItem('lastPath', location.pathname);
+    }
+  }, [location.pathname]);
+
+  return null;
+}
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -16,11 +43,31 @@ import CertificateRegistryPage from "./pages/CertificateRegistry";
 import SchoolHeaderConfig from "./pages/SchoolHeaderConfig";
 import Finance from "./pages/Finance";
 import PrivateRoute from "./components/PrivateRoute";
+import { Notifications } from "./pages/Notifications";
 import Settings from "./pages/Settings";
+import { AttendanceMonitoring } from "./pages/AttendanceMonitoring";
 
 function App() {
+  useWakeLock();
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      e.preventDefault();
+          };
+    
+    // Prevent default drag and drop behavior on the window
+    // to stop the browser from opening the file and leaving the app
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
+    
+    return () => {
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
+      <RoutePersistence />
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -42,7 +89,9 @@ function App() {
           <Route path="/certificate-registry" element={<PrivateRoute allowedRoles={['admin', 'staff']}><CertificateRegistryPage /></PrivateRoute>} />
           <Route path="/school-header" element={<PrivateRoute allowedRoles={['admin']}><SchoolHeaderConfig /></PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute allowedRoles={['admin']}><Settings /></PrivateRoute>} />
+          <Route path="/attendance-monitoring" element={<PrivateRoute allowedRoles={['admin', 'staff']}><AttendanceMonitoring /></PrivateRoute>} />
           <Route path="/finance" element={<PrivateRoute allowedRoles={['admin']}><Finance /></PrivateRoute>} />
+          <Route path="/notifications" element={<PrivateRoute allowedRoles={['admin', 'parent']}><Notifications /></PrivateRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

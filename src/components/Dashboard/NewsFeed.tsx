@@ -1,5 +1,6 @@
+import { useCommunicationStore } from '../../stores/communicationStore';
 import React from 'react';
-import { useData } from '../../contexts/DataContext';
+
 import { useLanguage } from '../../contexts/LanguageContext';
 import { motion } from 'framer-motion';
 import { 
@@ -22,7 +23,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 
 const NewsFeed: React.FC = () => {
-  const { news, deleteNews } = useData();
+  const { news, deleteNews } = useCommunicationStore();
   const { t, isRTL } = useLanguage();
   const { isAdmin, isStaff } = useAuth();
   const canManage = isAdmin || isStaff;

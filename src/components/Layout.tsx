@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import Navigation from './Navigation';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,11 +14,40 @@ import {
 } from './ui/dropdown-menu';
 import ErrorBoundary from './ErrorBoundary';
 import { triggerPrint, getAvatarUrl } from '../lib/utils';
+import { useStudentStore } from '../stores/studentStore';
+import { useEmployeeStore } from '../stores/employeeStore';
+import { useSchoolStore } from '../stores/schoolStore';
+import { useSettingsStore } from '../stores/settingsStore';
 
 const Layout: React.FC = () => {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, logout, user, assignedClasses } = useAuth();
   const location = useLocation();
   const { language, setLanguage, isRTL } = useLanguage();
+  const fetchStudents = useStudentStore(state => state.fetchData);
+  const clearStudents = useStudentStore(state => state.clearStore);
+  const fetchEmployees = useEmployeeStore(state => state.fetchData);
+  const clearEmployees = useEmployeeStore(state => state.clearStore);
+  const fetchSchool = useSchoolStore(state => state.fetchData);
+  const clearSchool = useSchoolStore(state => state.clearStore);
+  const fetchSettings = useSettingsStore(state => state.fetchData);
+  const clearSettings = useSettingsStore(state => state.clearStore);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // Type cast to access childrenIds safely since it's only on Parent
+      const childrenIds = 'childrenIds' in user ? (user as any).childrenIds : [];
+      fetchStudents(user.role, assignedClasses || [], childrenIds);
+      fetchEmployees();
+      fetchSchool();
+      fetchSettings();
+    } else {
+      clearStudents();
+      clearEmployees();
+      clearSchool();
+      clearSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.id, fetchStudents, clearStudents, fetchEmployees, clearEmployees, fetchSchool, clearSchool, fetchSettings, clearSettings]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -27,7 +56,7 @@ const Layout: React.FC = () => {
   return (
     <div className={`flex h-screen bg-transparent overflow-hidden ${isRTL ? 'font-arabic flex-row-reverse' : ''}`}>
       {/* Desktop Sidebar (Hidden on mobile) */}
-      <aside className="hidden lg:flex w-72 flex-col bg-card border-slate-100 z-50 print:hidden relative transition-layout border-r shadow-sm">
+      <aside className="sidebar hidden lg:flex flex-col z-50 print:hidden relative transition-layout">
         <div className="p-6 flex items-center gap-4">
           <div className="bg-primary/10 p-2.5 rounded-[1.2rem] w-12 h-12 flex items-center justify-center shadow-sm text-primary overflow-hidden">
              {/* Dynamic Administration Logo SVG */}
@@ -87,7 +116,7 @@ const Layout: React.FC = () => {
         </div>
 
         {/* Mobile Header */}
-        <header className="lg:hidden sticky top-0 z-40 bg-card/80 backdrop-blur-xl border-b border-slate-100 p-4 safe-area-top shadow-sm">
+        <header className="topbar lg:hidden sticky top-0 z-40 backdrop-blur-xl safe-area-top">
           <div className="flex items-center justify-between relative z-10">
             <div className="flex items-center gap-3">
               <div className="bg-primary/10 p-2 rounded-[1rem] w-10 h-10 flex items-center justify-center shadow-sm text-primary">
@@ -163,7 +192,7 @@ const Layout: React.FC = () => {
         </div>
 
         {/* Scrollable Content */}
-        <main className="flex-1 w-full max-w-7xl mx-auto overflow-y-auto no-scrollbar scroll-smooth print:block print:overflow-visible print:w-full print:max-w-none print:m-0 print:p-0">
+        <main className="main-content overflow-y-auto no-scrollbar scroll-smooth print:block print:overflow-visible print:w-full print:max-w-none print:m-0 print:p-0">
           <ErrorBoundary>
             <AnimatePresence mode="wait">
               <motion.div

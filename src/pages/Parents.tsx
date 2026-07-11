@@ -1,5 +1,7 @@
+import { useUserStore } from "../stores/userStore";
+import { useStudentStore } from '../stores/studentStore';
 import React, { useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -23,7 +25,8 @@ import { safeOpenExternalLink } from '../lib/utils';
 const CLASSES = ['Tous', '1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B', '5A', '5B', '6A', '6B'];
 
 const Parents: React.FC = () => {
-  const { students, parentUsers, addParentUser } = useData();
+  const { students } = useStudentStore();
+  const { parentUsers, addParentUser } = useUserStore();
   const { t, isRTL } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState('Tous');

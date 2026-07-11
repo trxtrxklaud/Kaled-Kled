@@ -1,21 +1,25 @@
 import * as React from "react"
 
 interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "secondary" | "destructive" | "outline"
+  variant?: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info"
 }
 
 export const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
   ({ className = "", variant = "default", ...props }, ref) => {
     const variants = {
-      default: "bg-primary text-primary-foreground",
-      secondary: "bg-secondary text-secondary-foreground",
-      destructive: "bg-destructive text-destructive-foreground",
-      outline: "border border-input",
+      default: "badge-info",
+      secondary: "badge-warning",
+      destructive: "badge-danger",
+      outline: "border border-border",
+      success: "badge-success",
+      warning: "badge-warning",
+      info: "badge-info"
     }
+
     return (
       <div
         ref={ref}
-        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${variants[variant]} ${className}`}
+        className={`badge ${variants[variant]} ${className}`}
         {...props}
       />
     )

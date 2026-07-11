@@ -1,5 +1,8 @@
+import { useAcademicStore } from '../stores/academicStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
+import { useSchoolStore } from '../stores/schoolStore';
 import type { ScheduleCell } from '../lib/types';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -87,10 +90,12 @@ const Schedules: React.FC = () => {
     examPlanningFiles,
     addExamPlanningFile,
     deleteExamPlanningFile,
+  } = useAcademicStore();
+  const { schoolBranding } = useSettingsStore();
+  const {
     weeklySchedule,
     weeklyScheduleLocks,
     timetableActionLogs,
-    schoolBranding,
     classTimetableImages,
     replaceWeeklySchedule,
     updateScheduleLock,
@@ -98,7 +103,7 @@ const Schedules: React.FC = () => {
     replaceWeeklyScheduleLocks,
     setClassTimetableImage,
     removeClassTimetableImage,
-  } = useData();
+  } = useSchoolStore();
   const { isAdmin, isTeacher, assignedClasses } = useAuth();
 
   const visibleClasses = isTeacher ? assignedClasses : ALL_CLASSES;

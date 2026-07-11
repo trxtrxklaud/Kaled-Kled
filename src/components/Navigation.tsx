@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy, Database } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardCheck, Bell, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy, Database } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,6 +18,7 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
     { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
     { icon: Users, label: t('students'), path: '/students' },
     { icon: UserRound, label: t('employees'), path: '/employees' },
+    { icon: ClipboardCheck, label: isRTL ? 'مراقبة الحضور' : 'Suivi Présences', path: '/attendance-monitoring' },
     { icon: BookOpen, label: t('schedules'), path: '/schedules' },
     { icon: Trophy, label: isRTL ? 'النتائج' : 'Résultats', path: '/results' },
     { icon: FileText, label: t('homework'), path: '/homework' },
@@ -32,7 +33,7 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   if (canModifySystem) {
     navItems.push({ icon: School, label: t('school_header'), path: '/school-header' });
     navItems.push({ icon: Database, label: isRTL ? 'قاعدة البيانات' : 'Base de données', path: '/settings' });
-  }
+    }
 
   if (canAccessFinance) {
     navItems.push({ icon: DollarSign, label: t('finance'), path: '/finance' });
@@ -41,7 +42,8 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   let filteredNavItems = navItems;
   if (useAuth().isParent) {
     filteredNavItems = [
-      { icon: LayoutDashboard, label: t('dashboard'), path: '/' }
+      { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
+      { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' }
     ];
   }
 

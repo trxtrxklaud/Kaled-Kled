@@ -1,6 +1,8 @@
+import { useAcademicStore } from "../stores/academicStore";
+import { useStudentStore } from '../stores/studentStore';
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   BookOpen, 
@@ -54,7 +56,8 @@ const SERVER_BASE_URL = 'https://school.providence.ma/files/';
 
 const HomeworkPage: React.FC = () => {
   const { isTeacher, assignedClasses, isParent, user } = useAuth();
-  const { homeworks, addHomework, updateHomework, deleteHomework, academicAssets, addAcademicAsset, removeAcademicAsset, students } = useData();
+  const { students } = useStudentStore();
+  const { homeworks, addHomework, updateHomework, deleteHomework, academicAssets, addAcademicAsset, removeAcademicAsset } = useAcademicStore();
   const { t, isRTL } = useLanguage();
 
   // Wizard state variables
@@ -253,7 +256,7 @@ const HomeworkPage: React.FC = () => {
     };
 
     if (editingHomework) {
-      updateHomework({ ...homeworkData, id: editingHomework.id as string });
+      updateHomework(editingHomework.id as string, homeworkData);
       toast.success('Devoir mis à jour !');
     } else {
       addHomework(homeworkData);

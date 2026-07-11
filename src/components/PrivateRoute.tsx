@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -10,7 +10,7 @@ interface PrivateRouteProps {
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles }) => {
   const { isAuthenticated, user } = useAuth();
-  const { isDataLoaded } = useData();
+  const isDataLoaded = true;
   const location = useLocation();
 
   if (!isDataLoaded) {

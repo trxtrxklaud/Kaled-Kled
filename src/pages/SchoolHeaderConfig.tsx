@@ -1,5 +1,6 @@
+import { useSettingsStore } from '../stores/settingsStore';
 import React from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -10,7 +11,7 @@ import { ImageUp, Stamp, School, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SchoolHeaderConfig: React.FC = () => {
-  const { schoolBranding, updateSchoolBranding } = useData();
+  const { schoolBranding, updateSchoolBranding } = useSettingsStore();
   const { isRTL } = useLanguage();
 
   const handleFileUpload = async (

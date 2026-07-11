@@ -1,5 +1,6 @@
+import { useFinanceStore } from '../stores/financeStore';
 import React, { useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion } from 'framer-motion';
@@ -21,7 +22,7 @@ import * as XLSX from '../lib/xlsx';
 import { triggerPrint } from '../lib/utils';
 
 const Finance: React.FC = () => {
-  const { financeArrears, addFinanceArrear, updateFinanceArrear, sendPaymentReminder } = useData();
+  const { financeArrears, addFinanceArrear, updateFinanceArrear, sendPaymentReminder } = useFinanceStore();
   const { isAdmin } = useAuth();
   const { t, isRTL } = useLanguage();
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -125,7 +126,7 @@ const Finance: React.FC = () => {
   const handleMarkPaid = (id: string) => {
     const arrear = financeArrears.find(a => a.id === id);
     if (arrear) {
-      updateFinanceArrear({ ...arrear, status: 'paid' });
+      updateFinanceArrear(id, { status: 'paid' });
       toast.success('Paiement enregistré');
     }
   };

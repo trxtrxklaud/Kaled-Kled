@@ -1,9 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect } from 'react';
 import type { User } from '../lib/types';
-import { useData } from './DataContext';
+
 import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { useLocalStorage } from '../lib/useLocalStorage';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+
 
 // Load credentials from environment (Vite .env with VITE_ prefix)
 // Never hardcode secrets in source code. Use .env.example as template.
@@ -19,6 +21,7 @@ const ARABIC_ADMIN_PASS = import.meta.env.VITE_AR_ADMIN_PASSWORD || 'ريمحم�
 
 interface AuthContextType {
   user: User | null;
+  updateUser: (user: any) => void;
   login: (username: string, password: string) => Promise<{ success: boolean; role?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -27,14 +30,16 @@ interface AuthContextType {
   isTeacher: boolean;
   isParent: boolean;
   canAccessFinance: boolean;
-  canModifySystem: boolean;
+  canModifySystem: boolean,
   assignedClasses: string[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { authSessionUser: user, setAuthSessionUser, parentUsers } = useData();
+  const [user, setUser] = useLocalStorage<any>('auth_user_session', null);
+  const updateUser = setUser;
+  const parentUsers: any[] = [];
 
   useEffect(() => {
     // Listen for Firebase Auth changes to silently keep sessions aligned if needed
@@ -48,31 +53,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (username: string, password: string): Promise<{ success: boolean; role?: string }> => {
+    const syncFirebase = async (email: string, _userDoc: any) => {
+      console.log('Mock syncFirebase called for', email);
+    };
+
     // Tier 1 - School Administration/Owner (Full Access)
     if ((username === ARABIC_ADMIN_USER && password === ARABIC_ADMIN_PASS) || 
         (username === ADMIN_USERNAME && password === ADMIN_PASSWORD)) {
       const newUser: User = { id: '1', username: 'محمد', role: 'admin', name: 'المدير العام', assignedClasses: [] };
-      setAuthSessionUser(newUser);
+      setUser(newUser);
       
       // Try to sync with Firebase Auth invisibly if they created an account
-      try {
-        await signInWithEmailAndPassword(auth, `admin@providence.com`, password);
-      } catch (e) {
-        console.warn('Firebase sync login skipped');
-      }
+      await syncFirebase('admin@providence.com', { role: 'admin', assignedClasses: [], childrenIds: [] });
       return { success: true, role: 'admin' };
     } 
     // Tier 2 - School Staff/Administrators (Shared Account)
     else if (username === STAFF_USERNAME && password === STAFF_PASSWORD) {
       const newUser: User = { id: '2', username: 'staff', role: 'staff', name: 'الإدارة المشتركة', assignedClasses: [] };
-      setAuthSessionUser(newUser);
+      setUser(newUser);
+      await syncFirebase('staff@providence.com', { role: 'staff', assignedClasses: [], childrenIds: [] });
       return { success: true, role: 'staff' };
     } 
     // Tier 3 - School Teachers (Unique Accounts)
-    else if (username.startsWith('prof') && password === TEACHER_PASSWORD) {
+    else if (username.toLowerCase().startsWith('prof') && password === TEACHER_PASSWORD) {
       const assignedClasses = ['1A', '1B', '1C', '2A', '2B'];
       const newUser: User = { id: username, username, role: 'teacher', name: `M. ${username}`, assignedClasses };
-      setAuthSessionUser(newUser);
+      setUser(newUser);
+      await syncFirebase(`${username}@providence.com`, { role: 'teacher', assignedClasses, childrenIds: [] });
       return { success: true, role: 'teacher' };
     }
     // Tier 4 - Parents (Dynamic from DataContext)
@@ -80,24 +87,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Find parent by phone (treating username as phone)
       const parent = parentUsers.find(p => p.phone === username);
       if (parent && parent.passwordHash === password) {
+        const childrenIds = parent.childrenIds || [];
         const newUser: User = { 
           id: parent.id, 
           username: parent.phone, 
           role: 'parent', 
           name: parent.fullName,
-          childrenIds: parent.childrenIds || [],
+          childrenIds: childrenIds,
           phone: parent.phone,
           mustChangePassword: parent.mustChangePassword
         };
         // Try Firebase Auth for parents
-        try {
-          // If phone is "2xxxxxxx", format as email: 2xxxxxxx@parent.providence.com
-          await signInWithEmailAndPassword(auth, `${username}@parent.providence.com`, password);
-        } catch (e) {
-          console.warn('Firebase parent auth skipped');
-        }
+        await syncFirebase(`${username}@parent.providence.com`, { role: 'parent', childrenIds, assignedClasses: [] });
         
-        setAuthSessionUser(newUser);
+        setUser(newUser);
         return { success: true, role: 'parent' };
       }
     }
@@ -105,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    setAuthSessionUser(null);
+    setUser(null);
     signOut(auth).catch(console.error);
   };
 
@@ -120,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ 
-      user, login, logout, isAuthenticated, isAdmin, isStaff, isTeacher, isParent,
+      user, updateUser, login, logout, isAuthenticated, isAdmin, isStaff, isTeacher, isParent,
       canAccessFinance, canModifySystem, assignedClasses 
     }}>
       {children}

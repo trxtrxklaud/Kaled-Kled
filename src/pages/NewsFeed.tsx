@@ -1,3 +1,5 @@
+import { useCommunicationStore } from '../stores/communicationStore';
+import { useStudentStore } from '../stores/studentStore';
 import React, { useState } from 'react';
 import { 
   Heart, 
@@ -23,7 +25,7 @@ import {
 } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useData } from '../contexts/DataContext';
+
 import { useAuth } from '../contexts/AuthContext';
 import type { Post } from '../lib/types';
 import { toast } from 'sonner';
@@ -35,7 +37,8 @@ const AUDIENCE_OPTIONS = ['Tout le monde', 'Enseignants', 'Parents', 'Classes sp
 
 const NewsFeed: React.FC = () => {
   const { t } = useLanguage();
-  const { posts, addPost, likePost, addComment, editPost, deletePost, students } = useData();
+  const { posts, addPost, likePost, addComment, editPost, deletePost } = useCommunicationStore();
+  const { students } = useStudentStore();
   const { user, isAdmin, isTeacher, isParent } = useAuth();
 
   // Determine current user context
@@ -126,6 +129,8 @@ const NewsFeed: React.FC = () => {
       content: newContent.trim(),
       audience: audienceLabel,
       images: [...newImages],
+      date: new Date().toISOString(),
+      likedByCurrentUser: false,
     });
     
     setNewContent('');
@@ -148,6 +153,7 @@ const NewsFeed: React.FC = () => {
       author: currentUserName,
       role: currentUserRole,
       text,
+      date: new Date().toISOString(),
     });
 
     setCommentText(prev => ({ ...prev, [postId]: '' }));

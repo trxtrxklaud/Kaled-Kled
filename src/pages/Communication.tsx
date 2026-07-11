@@ -1,5 +1,6 @@
+import { useCommunicationStore } from '../stores/communicationStore';
 import React, { useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,9 +34,16 @@ import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
 import { safeOpenExternalLink } from '../lib/utils';
 
+import { useSchoolStore } from '../stores/schoolStore';
+import { useNotificationStore } from '../stores/notificationStore';
+
 const Communication: React.FC = () => {
-  const { announcements, messages, addAnnouncement, deleteAnnouncement, markMessageRead, addMessage } = useData();
+  const { messages, markMessageRead, addMessage } = useCommunicationStore();
+  const { announcements, addAnnouncement, deleteAnnouncement } = useSchoolStore();
+  const { events: notifEvents, fetchAllEvents } = useNotificationStore();
+
   const { isAdmin } = useAuth();
+  React.useEffect(() => { if (isAdmin) fetchAllEvents(); }, [isAdmin, fetchAllEvents]);
   const { t, isRTL } = useLanguage();
   
   const [, setActiveTab] = useState('announcements');
@@ -141,6 +149,11 @@ const Communication: React.FC = () => {
           <TabsTrigger value="messages" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-xl transition-all font-black text-[10px] uppercase tracking-widest">
             <Mail className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('unread_messages')}
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="notifications" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-xl transition-all font-black text-[10px] uppercase tracking-widest">
+              <Bell className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {isRTL ? 'سجل الإشعارات' : 'Journal Notifs'}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="announcements" className="space-y-6">
@@ -238,7 +251,38 @@ const Communication: React.FC = () => {
             )}
           </AnimatePresence>
         </TabsContent>
-      </Tabs>
+              <TabsContent value="notifications" className="space-y-6">
+          <div className="flex justify-between items-center px-1">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">{isRTL ? 'سجل الإشعارات الفورية' : 'Historique des notifications'}</h3>
+          </div>
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 p-6 shadow-sm">
+            {notifEvents.length === 0 ? (
+              <div className="py-20 text-center">
+                <Bell className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">{t('no_data')}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {notifEvents.map((evt) => (
+                  <div key={evt.id} className="flex flex-col sm:flex-row gap-4 p-4 rounded-2xl bg-slate-50">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                      <Bell className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-sm text-slate-900">{evt.title}</h4>
+                      <p className="text-xs text-slate-500 mt-1">{evt.body}</p>
+                      <div className="flex items-center gap-3 mt-2 text-[10px] font-semibold text-slate-400">
+                        <span className="bg-slate-200/50 px-2 py-0.5 rounded-full">{evt.type}</span>
+                        <span>{new Date(evt.createdAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+</Tabs>
 
       {/* Add Announcement Dialog */}
       <Dialog open={isAddAnnOpen} onOpenChange={setIsAddAnnOpen}>

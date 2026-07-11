@@ -1,5 +1,9 @@
+import { useAcademicStore } from '../stores/academicStore';
+import { useSettingsStore } from "../stores/settingsStore";
+import { useStudentStore } from "../stores/studentStore";
+import { useCommunicationStore } from '../stores/communicationStore';
 import React, { useMemo, useState } from 'react';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -27,7 +31,10 @@ const sanitizeFileName = (value: string): string => (
 );
 
 const CertificatesPage: React.FC = () => {
-  const { students, academicResults, schoolBranding, addEmailDeliveryLog, addCertificateRegistryEntries } = useData();
+  const { students, academicResults } = useStudentStore();
+  const { addCertificateRegistryEntries } = useAcademicStore();
+  const { schoolBranding } = useSettingsStore();
+  const { addEmailDeliveryLog } = useCommunicationStore();
   const { isAdmin } = useAuth();
   const { isRTL } = useLanguage();
   const managerEmail = import.meta.env.VITE_MANAGER_EMAIL || '';

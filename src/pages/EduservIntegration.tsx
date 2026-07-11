@@ -1,3 +1,6 @@
+import { useStudentStore } from '../stores/studentStore';
+import { useAcademicStore } from '../stores/academicStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import React, { useRef, useState } from 'react';
 import {
   RefreshCw,
@@ -16,23 +19,15 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { AttendanceRecord, Student, ImportAcademicResultData, ImportExamScheduleData, ImportStudentData } from '../lib/types';
-import { useData } from '../contexts/DataContext';
+
 import { toast } from 'sonner';
 import * as XLSX from '../lib/xlsx';
 
 const EduservIntegration: React.FC = () => {
   const { t, isRTL } = useLanguage();
-  const {
-    students,
-    attendance,
-    academicResults,
-    importStudents,
-    importAcademicResults,
-    importExams,
-    eduservSyncLogs,
-    addEduservSyncLog,
-    clearEduservSyncLogs,
-  } = useData();
+  const { eduservSyncLogs, addEduservSyncLog, clearEduservSyncLogs } = useSettingsStore();
+  const { importStudents, importAcademicResultsStore: importAcademicResults, attendance, students, academicResults } = useStudentStore();
+  const { importExams } = useAcademicStore();
 
   const syncEndpoint = import.meta.env.VITE_EDUSERV_SYNC_ENDPOINT as string | undefined;
   const [apiKey, setApiKey] = useState(import.meta.env.VITE_EDUSERV_API_KEY || '');

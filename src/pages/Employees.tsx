@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useData } from '../contexts/DataContext';
+import { useEmployeeStore } from '../stores/employeeStore';
 import type { Employee } from '../lib/types';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -44,7 +44,7 @@ import * as XLSX from '../lib/xlsx';
 const EmployeeTypes = ['Tous', 'Teacher', 'Administration', 'Security', 'Other'];
 
 const Employees: React.FC = () => {
-  const { employees, addEmployee, updateEmployee, deleteEmployee, deleteEmployees } = useData();
+  const { employees, addEmployee, updateEmployee, deleteEmployee, deleteEmployees, importEmployees } = useEmployeeStore();
   const { isAdmin } = useAuth();
   const { t, isRTL } = useLanguage();
   
@@ -55,7 +55,6 @@ const Employees: React.FC = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedStack, setDeletedStack] = useState<Employee[][]>([]);
-  const { importEmployees } = useData();
 
   const handleUndo = () => {
     if (deletedStack.length === 0) return;
@@ -290,7 +289,7 @@ const Employees: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingEmployee) {
-      updateEmployee({ ...formData, id: editingEmployee.id });
+      updateEmployee(editingEmployee.id, formData);
     } else {
       addEmployee(formData);
     }

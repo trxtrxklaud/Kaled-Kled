@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -36,7 +36,7 @@ const Login: React.FC = () => {
   const [loginType, setLoginType] = useState<'admin' | 'student'>('student');
   
   const { login, isAuthenticated } = useAuth();
-  const { isDataLoaded } = useData();
+  const isDataLoaded = true;
   const { language, setLanguage, t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -162,7 +162,7 @@ const Login: React.FC = () => {
                 <path d="M4 14L12 18L20 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M12 14L12 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              {isRTL ? 'الإدارة' : 'Administration'}
+              {isRTL ? 'الإدارة والمعلمون' : 'Admin & Enseignants'}
             </button>
           </div>
 
