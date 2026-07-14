@@ -128,7 +128,7 @@ const Students: React.FC = () => {
       XLSX.writeFile(workbook, defaultFilename);
       toast.success(isRTL ? 'تم تسجيل الملف بنجاح' : 'Fichier enregistré avec succès');
     } catch (error: unknown) {
-      console.error(error);
+      console.error(error?.message || error);
       toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
     }
   };
@@ -150,7 +150,6 @@ const Students: React.FC = () => {
   const pageSize = 50;
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [searchQuery, selectedClass, students.length]);
 
@@ -353,7 +352,7 @@ const Students: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error(t('error_import'));
     } finally {
       if (e.target) {

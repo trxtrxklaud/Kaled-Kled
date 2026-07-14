@@ -115,7 +115,10 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
       const id = crypto.randomUUID();
       await setDoc(doc(db, 'homeworks', id), { ...hw, id });
       toast.success('تم إضافة الواجب');
-    } catch { toast.error('فشل إضافة الواجب'); }
+    } catch (err) { 
+      console.error("addHomework error:", err);
+      toast.error('فشل إضافة الواجب'); 
+    }
   },
 
   updateHomework: async (id, updates) => {

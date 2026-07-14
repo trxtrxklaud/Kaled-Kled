@@ -89,7 +89,7 @@ export const downloadFile = (dataUrl: string, filename: string) => {
       }
     }, 100);
   } catch (err) {
-    console.error('Error downloading file:', err);
+    console.error('Error downloading file:', err?.message || err);
     // Fallback if data is not large or simply fails
     const a = document.createElement('a');
     a.href = dataUrl;
@@ -125,7 +125,7 @@ export const printHtmlContent = (htmlContent: string, title: string = 'Document'
       printWindow.document.close();
       printWindow.focus();
     } catch(e) {
-      console.error('Error writing to print window:', e);
+      console.error('Error writing to print window:', e?.message || e);
       window.print();
     }
   } else {
@@ -147,7 +147,7 @@ export const triggerPrint = () => {
     const htmlContent = `<!DOCTYPE html><html><head>${baseTag}${headHtml}</head><body>${bodyHtml}</body></html>`;
     printHtmlContent(htmlContent, document.title);
   } catch (err) {
-    console.error(err);
+    console.error(err?.message || err);
     window.print(); // fallback
   }
 }

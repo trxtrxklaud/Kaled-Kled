@@ -128,7 +128,7 @@ const Results: React.FC = () => {
         toast.error(isRTL ? 'لم يتم العثور على أي علامات مطابقة للطلاب في هذا القسم' : 'Aucune note correspondante trouvée pour les élèves de cette classe');
       }
     } catch (err) {
-      console.error("Global import error", err);
+      console.error("Global import error", err?.message || err);
       toast.error(isRTL ? 'حدث خطأ أثناء الاستيراد' : 'Erreur lors de l\'importation');
     }
   };
@@ -192,7 +192,6 @@ const Results: React.FC = () => {
       }
     });
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalScores(scores);
   }, [selectedClass, selectedTrimester, classStudents, academicResults]);
 

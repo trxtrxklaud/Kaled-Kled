@@ -31,7 +31,6 @@ const Settings: React.FC = () => {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     checkCloudStatus();
   }, []);
 
@@ -67,7 +66,7 @@ const Settings: React.FC = () => {
       toast.success(isRTL ? `تم استرجاع ${restoredKeys.length} جداول بنجاح. جاري إعادة التحميل...` : `${restoredKeys.length} collections restaurées. Rechargement...`);
       setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       toast.error(isRTL ? 'فشل استرجاع السحابة' : 'La restauration cloud a échoué');
     } finally {
       setIsSyncing(false);
@@ -93,7 +92,7 @@ const Settings: React.FC = () => {
       }
 
       const combinedData = { ...localData, ...idbData };
-      const blob = new Blob([JSON.stringify(combinedData, null, 2)], { type: 'application/json' });
+      let blob; try { blob = new Blob([JSON.stringify(combinedData, null, 2)], { type: 'application/json' }); } catch(e) { console.warn("Circular data in export", e); blob = new Blob(["{}"], { type: 'application/json' }); }
       const url = URL.createObjectURL(blob);
       
       const a = document.createElement('a');
@@ -106,7 +105,7 @@ const Settings: React.FC = () => {
       
       toast.success(isRTL ? 'تم حفظ النسخة الاحتياطية بنجاح' : 'Sauvegarde téléchargée avec succès');
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error(isRTL ? 'حدث خطأ أثناء تحميل النسخة الاحتياطية' : 'Erreur lors du téléchargement de la sauvegarde');
     }
   };
@@ -140,7 +139,7 @@ const Settings: React.FC = () => {
         }, 1500);
 
       } catch (err) {
-        console.error(err);
+        console.error(err?.message || err);
         toast.error(isRTL ? 'ملف غير صالح أو حدث خطأ أثناء الاسترجاع' : 'Fichier invalide ou erreur lors de la restauration');
       }
     };

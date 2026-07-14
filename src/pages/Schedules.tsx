@@ -180,7 +180,7 @@ const Schedules: React.FC = () => {
     return TIME_SLOTS[currentIndex + 1] || time;
   };
 
-  const cloneWeeklySchedule = (source: typeof weeklySchedule): typeof weeklySchedule => JSON.parse(JSON.stringify(source));
+  const cloneWeeklySchedule = (source: typeof weeklySchedule): typeof weeklySchedule => typeof structuredClone === "function" ? structuredClone(source) : typeof structuredClone === "function" ? structuredClone(source) : JSON.parse(JSON.stringify(source));
 
   const pushScheduleHistory = () => {
     historyPastRef.current.push(cloneWeeklySchedule(weeklySchedule));
@@ -671,7 +671,7 @@ const Schedules: React.FC = () => {
       toast.error('Aucune journée à copier');
       return;
     }
-    setCopiedDay(JSON.parse(JSON.stringify(daySchedule)));
+    setCopiedDay(typeof structuredClone === "function" ? structuredClone(daySchedule) : JSON.parse(JSON.stringify(daySchedule)));
     logTimetableAction('day_copied', `Journée ${DAYS[DAY_KEYS.indexOf(copyDaySource)]} copiée`, { day: copyDaySource });
     toast.success(`Journée ${DAYS[DAY_KEYS.indexOf(copyDaySource)]} copiée`);
   };
@@ -682,7 +682,7 @@ const Schedules: React.FC = () => {
       toast.error('Aucune semaine à copier');
       return;
     }
-    setCopiedWeek(JSON.parse(JSON.stringify(classSchedule)));
+    setCopiedWeek(typeof structuredClone === "function" ? structuredClone(classSchedule) : JSON.parse(JSON.stringify(classSchedule)));
     logTimetableAction('week_copied', `Semaine de ${selectedClass} copiée`);
     toast.success(`Semaine de ${selectedClass} copiée`);
   };
@@ -700,7 +700,7 @@ const Schedules: React.FC = () => {
     const nextSchedule = cloneWeeklySchedule(weeklySchedule);
     nextSchedule[selectedClass] = {
       ...(nextSchedule[selectedClass] || {}),
-      [copyDayTarget]: JSON.parse(JSON.stringify(copiedDay)),
+      [copyDayTarget]: typeof structuredClone === "function" ? structuredClone(copiedDay) : JSON.parse(JSON.stringify(copiedDay)),
     };
 
     pushScheduleHistory();
@@ -720,7 +720,7 @@ const Schedules: React.FC = () => {
     }
 
     const nextSchedule = cloneWeeklySchedule(weeklySchedule);
-    nextSchedule[selectedClass] = JSON.parse(JSON.stringify(copiedWeek));
+    nextSchedule[selectedClass] = typeof structuredClone === "function" ? structuredClone(copiedWeek) : JSON.parse(JSON.stringify(copiedWeek));
     pushScheduleHistory();
     applyWeeklySchedule(nextSchedule);
     logTimetableAction('week_pasted', `Semaine collée sur ${selectedClass}`);
@@ -1180,13 +1180,13 @@ const Schedules: React.FC = () => {
     }
 
     const nextSchedule = cloneWeeklySchedule(weeklySchedule);
-    const clonedSchedule = JSON.parse(JSON.stringify(sourceSchedule)) as typeof sourceSchedule;
+    const clonedSchedule = typeof structuredClone === "function" ? structuredClone(sourceSchedule) : JSON.parse(JSON.stringify(sourceSchedule)) as typeof sourceSchedule;
     for (const classId of transferTargetClasses) {
       if (isWeekLocked(classId)) {
         toast.error(`La semaine cible ${classId} est verrouillée`);
         return;
       }
-      nextSchedule[classId] = JSON.parse(JSON.stringify(clonedSchedule));
+      nextSchedule[classId] = typeof structuredClone === "function" ? structuredClone(clonedSchedule) : JSON.parse(JSON.stringify(clonedSchedule));
     }
 
     if (batchTransferMode === 'move') {
@@ -1273,7 +1273,7 @@ const Schedules: React.FC = () => {
       const data = await compressImageFile(file);
       setPendingTimetableFile({ name: file.name, data });
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error("Failed to compress or read file.");
     }
     e.target.value = '';  // reset so same file can be re-picked
@@ -1302,7 +1302,7 @@ const Schedules: React.FC = () => {
       if (viewingClassImage === classId) setViewingClassImage(null);
       toast.success('Image supprimée');
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
     }
   };
 
@@ -1320,7 +1320,7 @@ const Schedules: React.FC = () => {
       const data = await compressImageFile(file);
       setPendingPlanFile({ name: file.name, data });
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error("Failed to compress or read file.");
     }
     e.target.value = '';

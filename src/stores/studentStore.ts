@@ -89,14 +89,14 @@ export const useStudentStore = create<StudentState>((set, get) => ({
         const unsubscribeStudents = onSnapshot(qStudents, (snapshot) => {
           set({ students: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)) });
         }, (err) => {
-          console.error('Students fetch error:', err);
+          console.error('Students fetch error:', err?.message || err);
           set({ error: err.message });
         });
 
         const unsubscribeResults = onSnapshot(qResults, (snapshot) => {
           set({ academicResults: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AcademicResult)) });
         }, (err) => {
-          console.error('Results fetch error:', err);
+          console.error('Results fetch error:', err?.message || err);
           set({ error: err.message, loading: false });
         });
 
@@ -104,13 +104,13 @@ export const useStudentStore = create<StudentState>((set, get) => ({
           set({ attendance: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord)) });
           set({ loading: false });
         }, (err) => {
-          console.error('Attendance fetch error:', err);
+          console.error('Attendance fetch error:', err?.message || err);
           set({ error: err.message, loading: false });
         });
 
         set({ unsubscribeStudents, unsubscribeResults, unsubscribeAttendance });
       } catch (err: any) {
-        console.error('Query setup error:', err);
+        console.error('Query setup error:', err?.message || err);
         toast.error('حدث خطأ في تحميل البيانات.');
         set({ error: err.message, loading: false });
       }
@@ -221,7 +221,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
       toast.success('تم حذف التلاميذ بنجاح');
     } catch (err) {
       toast.error('فشل في الحذف الجماعي');
-      console.error(err);
+      console.error(err?.message || err);
     }
   },
 
@@ -267,7 +267,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
             notes: String(item.notes || findValue(item, ['ملاحظة', 'note']) || '').trim(),
           };
         } catch (e) {
-          console.error("Error parsing student row", e);
+          console.error("Error parsing student row", e?.message || e);
           return null; // Skip this row
         }
       }).filter(Boolean) as Student[];
@@ -290,7 +290,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
          toast.warning('لم يتم العثور على تلاميذ جدد للاستيراد');
       }
     } catch (err) {
-      console.error("Import students error:", err);
+      console.error("Import students error:", err?.message || err);
       toast.error('حدث خطأ أثناء استيراد البيانات. يرجى التحقق من الملف.');
     }
   },
@@ -423,7 +423,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
       
       toast.success('تم حفظ النتائج بنجاح');
     } catch (err) {
-      console.error('Save batch error', err);
+      console.error('Save batch error', err?.message || err);
       toast.error('فشل في حفظ النتائج');
     }
   },
@@ -448,7 +448,7 @@ export const useStudentStore = create<StudentState>((set, get) => ({
       }
       // Removed toast to prevent spamming in loops
     } catch (err) {
-      console.error('فشل تسجيل الحضور/الغياب', err);
+      console.error('فشل تسجيل الحضور/الغياب', err?.message || err);
     }
   },
 

@@ -14,8 +14,9 @@ interface NewsAdminToolProps {
 }
 
 const NewsAdminTool: React.FC<NewsAdminToolProps> = ({ onPublish }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -27,21 +28,41 @@ const NewsAdminTool: React.FC<NewsAdminToolProps> = ({ onPublish }) => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
-      if (file.type.startsWith('image/')) {
-        const { compressImageFile } = await import('../../lib/imageCompressor');
-        const compressedDataUrl = await compressImageFile(file);
-        setFormData({ ...formData, mediaData: compressedDataUrl, mediaUrl: file.name });
+      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        if (file.size > 50 * 1024 * 1024) {
+          toast.error(isRTL ? 'حجم الملف كبير جداً (الحد الأقصى 50 ميغابايت).' : 'Fichier trop volumineux (Max 50MB).');
+          return;
+        }
+
+        setIsUploading(true);
+        try {
+          const { storage } = await import('../../lib/firebase');
+          const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+          const fileExt = file.name.split('.').pop();
+          const fileName = `news_media/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const mediaRef = ref(storage, fileName);
+          
+          await uploadBytes(mediaRef, file);
+          const url = await getDownloadURL(mediaRef);
+          
+          setFormData({ ...formData, mediaData: url, mediaUrl: file.name });
+          toast.success(isRTL ? 'تم الرفع بنجاح!' : 'Téléchargement réussi !');
+        } catch (error) {
+          console.error(error);
+          toast.error(isRTL ? 'حدث خطأ أثناء الرفع' : 'Erreur lors du téléchargement');
+        } finally {
+          setIsUploading(false);
+        }
       } else {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setFormData({ ...formData, mediaData: ev.target?.result as string, mediaUrl: file.name });
-        };
-        reader.readAsDataURL(file);
+        toast.error('Format de fichier non supporté. Veuillez choisir une image ou une vidéo.');
+        return;
       }
     } catch (err) {
       console.error(err);
       toast.error('Failed to read media');
+      setIsUploading(false);
     }
   };
 
@@ -55,19 +76,28 @@ const NewsAdminTool: React.FC<NewsAdminToolProps> = ({ onPublish }) => {
     }
 
     // YouTube / Media Type Detection
-    const youtubeRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const youtubeRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|\/shorts\/)([^#&?]*).*/;
     const isYoutube = youtubeRegex.test(formData.mediaUrl);
-    const mediaType = isYoutube ? 'video' as const : 'link' as const;
+    
+    // Determine if it's an uploaded video based on URL or original file name
+    const isUploadedVideo = formData.mediaData?.includes('firebasestorage') && 
+                            formData.mediaUrl.match(/\.(mp4|webm|ogg|mov)$/i);
+                            
+    const mediaType = (isYoutube || isUploadedVideo) ? 'video' as const : 'link' as const;
 
-    // State Injection via Dashboard Callback
-    onPublish({
+    const payload: any = {
       title: formData.title,
       description: formData.description,
       category: formData.category,
       mediaUrl: formData.mediaUrl,
-      mediaData: formData.mediaData || undefined,
       mediaType
-    });
+    };
+    if (formData.mediaData) {
+      payload.mediaData = formData.mediaData;
+    }
+
+    // State Injection via Dashboard Callback
+    onPublish(payload);
     
     // Form Reset
     setFormData({
@@ -190,9 +220,10 @@ const NewsAdminTool: React.FC<NewsAdminToolProps> = ({ onPublish }) => {
                   <Button 
                     type="button"
                     onClick={handlePublish}
-                    className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-10 h-12 shadow-xl shadow-primary/20 font-black uppercase tracking-[0.1em] transition-all active:scale-95"
+                    disabled={isUploading}
+                    className="bg-primary hover:bg-primary/90 text-white rounded-2xl px-10 h-12 shadow-xl shadow-primary/20 font-black uppercase tracking-[0.1em] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {t('publish')}
+                    {isUploading ? 'Téléchargement...' : t('publish')}
                   </Button>
                 </div>
               </div>

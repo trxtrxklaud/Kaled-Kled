@@ -29,9 +29,9 @@ const EduservIntegration: React.FC = () => {
   const { importStudents, importAcademicResultsStore: importAcademicResults, attendance, students, academicResults } = useStudentStore();
   const { importExams } = useAcademicStore();
 
-  const syncEndpoint = import.meta.env.VITE_EDUSERV_SYNC_ENDPOINT as string | undefined;
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_EDUSERV_API_KEY || '');
-  const [apiSecret, setApiSecret] = useState(import.meta.env.VITE_EDUSERV_API_SECRET || '');
+  const syncEndpoint = '/api/eduserv/sync';
+  const [apiKey, setApiKey] = useState('');
+  
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +48,7 @@ const EduservIntegration: React.FC = () => {
       return;
     }
     if (!syncEndpoint) {
-      toast.error('VITE_EDUSERV_SYNC_ENDPOINT is not configured');
+      toast.error('/api/eduserv/sync is not configured');
       addLog('error', '[ERROR] Sync endpoint not configured');
       return;
     }
@@ -59,12 +59,12 @@ const EduservIntegration: React.FC = () => {
     try {
       const response = await fetch(syncEndpoint, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(apiKey ? { 'X-Eduserv-Api-Key': apiKey } : {}),
-          ...(apiSecret ? { 'X-Eduserv-Api-Secret': apiSecret } : {}),
         },
-        body: JSON.stringify({ apiKey, apiSecret }),
+        body: JSON.stringify({ apiKey }),
       });
 
       if (!response.ok) {
@@ -222,7 +222,7 @@ const EduservIntegration: React.FC = () => {
       addLog('success', `[OK] Export generated: eduserv_attendance_report_${today}.xlsx`);
       toast.success(t('print_export') || 'Fichier exporté');
     } catch (err) {
-      console.error("Export error", err);
+      console.error("Export error", err?.message || err);
       toast.error("Erreur lors de l'export: " + (err instanceof Error ? err.message : String(err)));
     }
   };
@@ -274,7 +274,7 @@ const EduservIntegration: React.FC = () => {
       addLog('success', `[OK] Export generated: eduserv_bulletins_template_${today}.xlsx`);
       toast.success(t('print_export') || 'Fichier exporté');
     } catch (err) {
-      console.error("Export error", err);
+      console.error("Export error", err?.message || err);
       toast.error("Erreur lors de l'export: " + (err instanceof Error ? err.message : String(err)));
     }
   };
@@ -313,7 +313,6 @@ const EduservIntegration: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-500">{t('api_secret')}</Label>
-                  <Input type="password" value={apiSecret} onChange={(event) => setApiSecret(event.target.value)} className="h-11 rounded-2xl bg-white font-mono text-sm border-slate-200" placeholder="••••••••••••" />
                 </div>
               </div>
             </div>
@@ -335,7 +334,7 @@ const EduservIntegration: React.FC = () => {
                 </>
               )}
             </Button>
-            <p className="text-center text-[10px] text-slate-400 font-bold">Le bouton appelle désormais un endpoint backend réel via VITE_EDUSERV_SYNC_ENDPOINT.</p>
+            <p className="text-center text-[10px] text-slate-400 font-bold">Le bouton appelle désormais un endpoint backend réel via /api/eduserv/sync.</p>
           </div>
         </CardContent>
       </Card>

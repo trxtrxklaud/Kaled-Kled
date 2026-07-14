@@ -71,38 +71,38 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
         
         unsubs.push(onSnapshot(collection(db, 'announcements'), (snap) => {
           set({ announcements: snap.docs.map(d => ({ id: d.id, ...d.data() })) as Announcement[] });
-        }, (err) => console.error('Error fetching announcements:', err)));
+        }, (err) => console.error('Error fetching announcements:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'timetables'), (snap) => {
           set({ timetables: snap.docs.map(d => ({ id: d.id, ...d.data() })) as Timetable[] });
-        }, (err) => console.error('Error fetching timetables:', err)));
+        }, (err) => console.error('Error fetching timetables:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'weeklySchedules'), (snap) => {
           const schedule: WeeklySchedule = {};
           snap.forEach(d => { schedule[d.id] = d.data().schedule || {}; });
           set({ weeklySchedule: schedule });
-        }, (err) => console.error('Error fetching weekly schedules:', err)));
+        }, (err) => console.error('Error fetching weekly schedules:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'weeklyScheduleLocks'), (snap) => {
           const locks: WeeklyScheduleLocks = {};
           snap.forEach(d => { locks[d.id] = d.data() as any; });
           set({ weeklyScheduleLocks: locks });
-        }, (err) => console.error('Error fetching locks:', err)));
+        }, (err) => console.error('Error fetching locks:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'timetableActionLogs'), (snap) => {
           set({ timetableActionLogs: snap.docs.map(d => ({ id: d.id, ...d.data() })) as TimetableActionLog[] });
-        }, (err) => console.error('Error fetching timetable logs:', err)));
+        }, (err) => console.error('Error fetching timetable logs:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'classTimetableImages'), (snap) => {
           const images: ClassTimetableImages = {};
           snap.forEach(d => { images[d.id] = d.data().data; });
           set({ classTimetableImages: images });
-        }, (err) => console.error('Error fetching class timetable images:', err)));
+        }, (err) => console.error('Error fetching class timetable images:', err?.message || err)));
 
         set({ loading: false });
         return () => unsubs.forEach(fn => fn());
       } catch (err: any) {
-        console.error('School fetch error:', err);
+        console.error('School fetch error:', err?.message || err);
         set({ error: err.message, loading: false });
       }
     };
@@ -132,12 +132,12 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
       const id = crypto.randomUUID();
       await setDoc(doc(db, 'announcements', id), { ...ann, id });
       toast.success('تم إضافة الإعلان');
-    } catch (e) { toast.error('فشل إضافة الإعلان'); console.error(e); }
+    } catch (e) { toast.error('فشل إضافة الإعلان'); console.error(e?.message || e); }
   },
 
   deleteAnnouncement: async (id) => {
     try { await deleteDoc(doc(db, 'announcements', id)); toast.success('تم الحذف'); } 
-    catch (e) { toast.error('فشل في الحذف'); console.error(e); }
+    catch (e) { toast.error('فشل في الحذف'); console.error(e?.message || e); }
   },
 
   addTimetable: async (tt) => {
@@ -145,12 +145,12 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
       const id = crypto.randomUUID();
       await setDoc(doc(db, 'timetables', id), { ...tt, id });
       toast.success('تم إضافة الجدول');
-    } catch (e) { toast.error('فشل إضافة الجدول'); console.error(e); }
+    } catch (e) { toast.error('فشل إضافة الجدول'); console.error(e?.message || e); }
   },
 
   deleteTimetable: async (id) => {
     try { await deleteDoc(doc(db, 'timetables', id)); toast.success('تم الحذف'); } 
-    catch (e) { toast.error('فشل في الحذف'); console.error(e); }
+    catch (e) { toast.error('فشل في الحذف'); console.error(e?.message || e); }
   },
 
   saveScheduleCell: async (classId, day, time, cell) => {
@@ -164,7 +164,7 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
         }
       };
       await setDoc(doc(db, 'weeklySchedules', classId), { schedule: newSchedule });
-    } catch (e) { toast.error('فشل الحفظ'); console.error(e); }
+    } catch (e) { toast.error('فشل الحفظ'); console.error(e?.message || e); }
   },
 
   clearScheduleCell: async (classId, day, time) => {
@@ -175,13 +175,13 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
         delete updated[day][time];
       }
       await setDoc(doc(db, 'weeklySchedules', classId), { schedule: updated });
-    } catch (e) { toast.error('فشل المسح'); console.error(e); }
+    } catch (e) { toast.error('فشل المسح'); console.error(e?.message || e); }
   },
 
   replaceClassWeeklySchedule: async (classId, classSchedule) => {
     try {
       await setDoc(doc(db, 'weeklySchedules', classId), { schedule: classSchedule });
-    } catch (e) { toast.error('فشل التحديث'); console.error(e); }
+    } catch (e) { toast.error('فشل التحديث'); console.error(e?.message || e); }
   },
 
   replaceWeeklySchedule: async (schedule) => {
@@ -192,7 +192,7 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
       });
       await batch.commit();
       toast.success('تم الحفظ بنجاح');
-    } catch (e) { toast.error('فشل الحفظ الشامل'); console.error(e); }
+    } catch (e) { toast.error('فشل الحفظ الشامل'); console.error(e?.message || e); }
   },
 
   updateScheduleLock: async (classId, day, locked) => {
@@ -204,7 +204,7 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
         locks.weekLocked = locked;
       }
       await setDoc(doc(db, 'weeklyScheduleLocks', classId), locks);
-    } catch (e) { toast.error('فشل تحديث القفل'); console.error(e); }
+    } catch (e) { toast.error('فشل تحديث القفل'); console.error(e?.message || e); }
   },
 
   replaceWeeklyScheduleLocks: async (locks) => {
@@ -214,7 +214,7 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
         batch.set(doc(db, 'weeklyScheduleLocks', classId), lock);
       });
       await batch.commit();
-    } catch (e) { toast.error('فشل تحديث الأقفال'); console.error(e); }
+    } catch (e) { toast.error('فشل تحديث الأقفال'); console.error(e?.message || e); }
   },
 
   addTimetableActionLog: async (log) => {
@@ -222,18 +222,18 @@ export const useSchoolStore = create<SchoolStore>((set, get) => ({
       const id = crypto.randomUUID();
       const newLog = { ...log, id, createdAt: new Date().toISOString() };
       await setDoc(doc(db, 'timetableActionLogs', id), newLog);
-    } catch (e) { console.error('Error logging timetable action:', e); }
+    } catch (e) { console.error('Error logging timetable action:', e?.message || e); }
   },
 
   setClassTimetableImage: async (classId, data) => {
     try {
       await setDoc(doc(db, 'classTimetableImages', classId), { data });
-    } catch (e) { toast.error('فشل حفظ الصورة'); console.error(e); }
+    } catch (e) { toast.error('فشل حفظ الصورة'); console.error(e?.message || e); }
   },
 
   removeClassTimetableImage: async (classId) => {
     try {
       await deleteDoc(doc(db, 'classTimetableImages', classId));
-    } catch (e) { toast.error('فشل حذف الصورة'); console.error(e); }
+    } catch (e) { toast.error('فشل حذف الصورة'); console.error(e?.message || e); }
   }
 }));

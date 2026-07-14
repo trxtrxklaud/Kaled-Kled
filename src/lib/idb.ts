@@ -27,7 +27,7 @@ export async function idbGet<T>(key: string): Promise<T | null> {
     const val = await db.get('store', key);
     return val !== undefined ? (val as T) : null;
   } catch (err) {
-    console.error(`idbGet(${key}) error:`, err);
+    console.error(`idbGet(${key}) error:`, err?.message || err);
     return null;
   }
 }
@@ -37,7 +37,7 @@ export async function idbSet(key: string, val: unknown): Promise<void> {
     const db = await initDB();
     await db.put('store', val, key);
   } catch (err) {
-    console.error(`idbSet(${key}) error:`, err);
+    console.error(`idbSet(${key}) error:`, err?.message || err);
   }
 }
 
@@ -51,7 +51,7 @@ export async function idbGetAll(): Promise<Record<string, unknown>> {
     }
     return result;
   } catch (err) {
-    console.error('idbGetAll error:', err);
+    console.error('idbGetAll error:', err?.message || err);
     return {};
   }
 }
@@ -65,7 +65,7 @@ export async function idbSetAll(data: Record<string, unknown>): Promise<void> {
     }
     await tx.done;
   } catch (err) {
-    console.error('idbSetAll error:', err);
+    console.error('idbSetAll error:', err?.message || err);
   }
 }
 
@@ -74,7 +74,7 @@ export async function idbDel(key: string): Promise<void> {
     const db = await initDB();
     await db.delete('store', key);
   } catch (err) {
-    console.error(`idbDel(${key}) error:`, err);
+    console.error(`idbDel(${key}) error:`, err?.message || err);
   }
 }
 

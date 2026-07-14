@@ -75,28 +75,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         
         unsubs.push(onSnapshot(doc(db, 'settings', 'preferences'), (snap) => {
           if (snap.exists()) set({ appPreferences: snap.data() as AppPreferences });
-        }, (err) => console.error('Error fetching preferences:', err)));
+        }, (err) => console.error('Error fetching preferences:', err?.message || err)));
 
         unsubs.push(onSnapshot(doc(db, 'settings', 'branding'), (snap) => {
           if (snap.exists()) set({ schoolBranding: snap.data() as SchoolBranding });
-        }, (err) => console.error('Error fetching branding:', err)));
+        }, (err) => console.error('Error fetching branding:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'eduservSyncLogs'), (snap) => {
           set({ eduservSyncLogs: snap.docs.map(d => ({ id: d.id, ...d.data() })) as EduservSyncLog[] });
-        }, (err) => console.error('Error fetching sync logs:', err)));
+        }, (err) => console.error('Error fetching sync logs:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'statisticsFilterPresets'), (snap) => {
           set({ statisticsFilterPresets: snap.docs.map(d => ({ id: d.id, ...d.data() })) as StatisticsFilterPreset[] });
-        }, (err) => console.error('Error fetching presets:', err)));
+        }, (err) => console.error('Error fetching presets:', err?.message || err)));
 
         unsubs.push(onSnapshot(collection(db, 'system_backups_meta'), (snap) => {
           set({ backups: snap.docs.map(d => ({ id: d.id, ...d.data() })) as BackupRecord[] });
-        }, (err) => console.error('Error fetching backups meta:', err)));
+        }, (err) => console.error('Error fetching backups meta:', err?.message || err)));
 
         set({ loading: false });
         return () => unsubs.forEach(fn => fn());
       } catch (err: any) {
-        console.error('Settings fetch error:', err);
+        console.error('Settings fetch error:', err?.message || err);
         set({ error: err.message, loading: false });
       }
     };
@@ -125,7 +125,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const updated = { ...get().appPreferences, ...prefs, updatedAt: new Date().toISOString() };
       await setDoc(doc(db, 'settings', 'preferences'), updated);
-    } catch (e) { console.error('Failed to update prefs', e); }
+    } catch (e) { console.error('Failed to update prefs', e?.message || e); }
   },
 
   updateSchoolBranding: async (branding) => {
@@ -133,7 +133,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const updated = { ...get().schoolBranding, ...branding, updatedAt: new Date().toISOString() };
       await setDoc(doc(db, 'settings', 'branding'), updated);
       toast.success('تم حفظ إعدادات المدرسة');
-    } catch (e) { toast.error('فشل حفظ الإعدادات'); console.error(e); }
+    } catch (e) { toast.error('فشل حفظ الإعدادات'); console.error(e?.message || e); }
   },
 
   clearEduservSyncLogs: () => set({ eduservSyncLogs: [] }),
@@ -143,7 +143,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const id = crypto.randomUUID();
       const newLog = { ...log, id, timestamp: new Date().toISOString() };
       await setDoc(doc(db, 'eduservSyncLogs', id), newLog);
-    } catch (e) { console.error('Error adding sync log', e); }
+    } catch (e) { console.error('Error adding sync log', e?.message || e); }
   },
 
   saveStatisticsFilterPreset: async (preset) => {
@@ -152,14 +152,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const newPreset = { ...preset, id, createdAt: new Date().toISOString() };
       await setDoc(doc(db, 'statisticsFilterPresets', id), newPreset);
       toast.success('تم حفظ الفلتر المسبق');
-    } catch (e) { toast.error('فشل حفظ الفلتر'); console.error(e); }
+    } catch (e) { toast.error('فشل حفظ الفلتر'); console.error(e?.message || e); }
   },
 
   deleteStatisticsFilterPreset: async (id) => {
     try {
       const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'statisticsFilterPresets', id));
-    } catch (e) { toast.error('فشل حذف الفلتر'); console.error(e); }
+    } catch (e) { toast.error('فشل حذف الفلتر'); console.error(e?.message || e); }
   },
 
   triggerBackup: async (moduleName) => {
@@ -174,7 +174,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       };
       await setDoc(doc(db, 'system_backups_meta', moduleName), backupMeta);
     } catch (e) {
-      console.error('Backup trigger failed', e);
+      console.error('Backup trigger failed', e?.message || e);
     }
   }
 }));

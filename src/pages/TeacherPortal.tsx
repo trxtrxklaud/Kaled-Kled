@@ -13,7 +13,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { 
   Users, BookOpen, Trophy, 
-  MessageCircle, CheckCircle2, XCircle, Clock, Send, Check, AlertCircle
+  MessageCircle, CheckCircle2, XCircle, Clock, Send, Check, AlertCircle, Upload, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,7 +28,10 @@ export const TeacherPortal: React.FC = () => {
   const students = useStudentStore(state => state.students).filter(s => s.class === selectedClass);
   const recordAttendance = useStudentStore(state => state.recordAttendance);
   const addAcademicResult = useStudentStore(state => state.addAcademicResult);
+  const homeworks = useAcademicStore(state => state.homeworks);
   const addHomework = useAcademicStore(state => state.addHomework);
+  const addAcademicAsset = useAcademicStore(state => state.addAcademicAsset);
+  const academicAssets = useAcademicStore(state => state.academicAssets);
   const addPost = useCommunicationStore(state => state.addPost);
   const createNotificationEvent = useNotificationStore(state => state.createNotificationEvent);
   const parentUsers = useUserStore(state => state.parentUsers);
@@ -87,17 +90,68 @@ export const TeacherPortal: React.FC = () => {
   const [hwTitle, setHwTitle] = useState('');
   const [hwDesc, setHwDesc] = useState('');
   const [hwSubject, setHwSubject] = useState('');
+  const [hwFile, setHwFile] = useState<string | null>(null);
+  const [hwFilePreview, setHwFilePreview] = useState<string | null>(null);
+
+  const handleHwFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { compressImageFile, SUPPORTED_TYPES } = await import('../lib/imageCompressor');
+      if (SUPPORTED_TYPES.includes(file.type) || file.type.startsWith('image/')) {
+        const data = await compressImageFile(file);
+        setHwFile(file.name);
+        setHwFilePreview(data);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setHwFile(file.name);
+          setHwFilePreview(ev.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err: any) {
+      setHwFile(null);
+      setHwFilePreview(null);
+    } finally {
+      (e.target as HTMLInputElement).value = '';
+    }
+  };
 
   const handleSaveHomework = async () => {
     if (!selectedClass || !hwTitle || !hwSubject) return;
-    await addHomework({
+
+    const homeworkData: any = {
       title: hwTitle,
       description: hwDesc,
       classes: [selectedClass],
       subject: hwSubject,
       session: 'Session 1',
       uploadDate: new Date().toISOString()
-    });
+    };
+    if (hwFile) homeworkData.fileName = hwFile;
+    if (hwFilePreview) homeworkData.fileData = hwFilePreview;
+
+    await addHomework(homeworkData);
+
+    if (hwFile && hwFilePreview) {
+      let mimeType = 'application/octet-stream';
+      if (hwFilePreview.startsWith('data:')) {
+        mimeType = hwFilePreview.substring(5, hwFilePreview.indexOf(';'));
+      } else if (/\.(png|jpe?g|gif|webp|svg)$/i.test(hwFile)) {
+        mimeType = 'image/jpeg';
+      }
+      await addAcademicAsset({
+        fileName: `${hwTitle} - ${hwFile}`,
+        mimeType,
+        payload: hwFilePreview,
+        subjectKey: hwSubject,
+        classId: selectedClass
+      });
+    }
+
 
     // Notify parents of this class
     const parentsOfClass = parentUsers.filter(p => students.some(s => p.childrenIds.includes(s.id)));
@@ -114,6 +168,8 @@ export const TeacherPortal: React.FC = () => {
     setHwTitle('');
     setHwDesc('');
     setHwSubject('');
+    setHwFile(null);
+    setHwFilePreview(null);
     toast.success(isRTL ? 'تمت إضافة الواجب' : 'Devoir ajouté');
   };
 
@@ -343,13 +399,61 @@ export const TeacherPortal: React.FC = () => {
                     placeholder={isRTL ? 'وصف الواجب المنزلي...' : 'Description du devoir...'} 
                     value={hwDesc} onChange={e => setHwDesc(e.target.value)}
                     className="w-full min-h-[100px] p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm resize-none"
-                  />
+                  ></textarea>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-500 ml-1">{isRTL ? 'صورة / ملف' : 'Image / Fichier'}</Label>
+                  <div className="relative">
+                    <input 
+                      type="file" 
+                      onChange={handleHwFileSelect}
+                      className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                    />
+                    <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                        {hwFilePreview ? (
+                           <img src={hwFilePreview} className="w-10 h-10 rounded-xl object-cover" />
+                        ) : (
+                           <Upload className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-700 truncate">{hwFile || (isRTL ? 'اختر ملفاً' : 'Choisir un fichier')}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-
               <Button onClick={handleSaveHomework} disabled={!hwTitle || !hwSubject} className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest mt-6 shadow-lg shadow-indigo-600/20">
                 <Check className="w-5 h-5 mr-2" /> {isRTL ? 'إضافة الواجب' : 'Ajouter le devoir'}
               </Button>
+
+              <div className="mt-8">
+                <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-4">{isRTL ? 'الواجبات المسجلة' : 'Devoirs enregistrés'}</h4>
+                <div className="space-y-3">
+                  {homeworks.filter(hw => hw.classes?.includes(selectedClass!)).length === 0 ? (
+                    <p className="text-center text-xs text-slate-400 py-4">{isRTL ? 'لا يوجد واجبات' : 'Aucun devoir'}</p>
+                  ) : (
+                    homeworks.filter(hw => hw.classes?.includes(selectedClass!)).map(hw => (
+                      <div key={hw.id} className="flex flex-col p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h5 className="font-bold text-sm text-slate-900">{hw.title}</h5>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">{hw.subject}</span>
+                          </div>
+                          {hw.fileName && (
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 p-1.5 rounded-lg">
+                              <FileText className="w-3 h-3" />
+                              <span className="max-w-[100px] truncate">{hw.fileName}</span>
+                            </div>
+                          )}
+                        </div>
+                        {hw.description && <p className="text-xs text-slate-500 line-clamp-2">{hw.description}</p>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

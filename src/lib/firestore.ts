@@ -6,7 +6,7 @@ export async function fetchCollection<T>(collectionName: string): Promise<T[]> {
     const snapshot = await getDocs(collection(db, collectionName));
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
   } catch (err) {
-    console.error(`Error fetching ${collectionName} from Firestore`, err);
+    console.error(`Error fetching ${collectionName} from Firestore`, err?.message || err);
     return [];
   }
 }
@@ -16,7 +16,7 @@ export async function saveDocument<T extends { id?: string }>(collectionName: st
   try {
     await setDoc(doc(db, collectionName, data.id), data, { merge: true });
   } catch (err) {
-    console.error(`Error saving to ${collectionName}`, err);
+    console.error(`Error saving to ${collectionName}`, err?.message || err);
   }
 }
 
@@ -32,7 +32,7 @@ export async function saveMultipleDocuments<T extends { id?: string }>(collectio
     });
     await batch.commit();
   } catch (err) {
-    console.error(`Error batch saving ${collectionName}`, err);
+    console.error(`Error batch saving ${collectionName}`, err?.message || err);
   }
 }
 
@@ -43,7 +43,7 @@ export async function fetchDocument<T>(collectionName: string, id: string): Prom
       return { id: document.id, ...document.data() } as T;
     }
   } catch (err) {
-    console.error(`Error fetching document ${id} from ${collectionName}`, err);
+    console.error(`Error fetching document ${id} from ${collectionName}`, err?.message || err);
   }
   return null;
 }

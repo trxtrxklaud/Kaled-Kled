@@ -282,7 +282,7 @@ const CertificatesPage: React.FC = () => {
       addEmailDeliveryLog({
         recipientEmail: managerEmail,
         subject: `Certificates - ${scopeLabel}`,
-        provider: import.meta.env.VITE_SMTP_API_ENDPOINT ? 'smtp' : 'emailjs',
+        provider: 'smtp',
         status: 'failed',
         attachmentCount: 1,
         attachmentNames: [zipAttachment.fileName],
@@ -448,7 +448,7 @@ const CertificatesPage: React.FC = () => {
                         addEmailDeliveryLog({
                           recipientEmail: managerEmail,
                           subject: `Certificate - ${row.student.fullName}`,
-                          provider: import.meta.env.VITE_SMTP_API_ENDPOINT ? 'smtp' : 'emailjs',
+                          provider: 'smtp',
                           status: 'failed',
                           attachmentCount: 1,
                           attachmentNames: [`certificat_${sanitizeFileName(row.student.fullName)}.pdf`],

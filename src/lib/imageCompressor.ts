@@ -20,7 +20,7 @@ export const compressImageFile = async (
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error("FileReader error"));
       reader.readAsDataURL(file);
     });
   }
@@ -51,7 +51,7 @@ export const compressImageFile = async (
         if (!ctx) {
           const fallbackReader = new FileReader();
           fallbackReader.onload = (e) => resolve(e.target?.result as string);
-          fallbackReader.onerror = reject;
+          fallbackReader.onerror = () => reject(new Error("FileReader error"));
           fallbackReader.readAsDataURL(file);
           return;
         }
@@ -77,7 +77,7 @@ export const compressImageFile = async (
         URL.revokeObjectURL(objectUrl);
         const fallbackReader = new FileReader();
         fallbackReader.onload = (e) => resolve(e.target?.result as string);
-        fallbackReader.onerror = reject;
+        fallbackReader.onerror = () => reject(new Error("FileReader error"));
         fallbackReader.readAsDataURL(file);
       };
 
@@ -86,11 +86,11 @@ export const compressImageFile = async (
 
     return compressedDataUrl;
   } catch (error) {
-    console.error("[compressImage] Error:", error);
+    console.error("[compressImage] Error:", error instanceof Error ? error.message : "ProgressEvent or similar circular error");
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error("FileReader error"));
       reader.readAsDataURL(file);
     });
   }

@@ -45,7 +45,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
             set({ employees, loading: false });
           },
           (err) => {
-            console.error('Employees fetch error:', err);
+            console.error('Employees fetch error:', err?.message || err);
             set({ error: err.message, loading: false });
           }
         );
@@ -54,7 +54,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
         // Since we want simple logic, we just return
         return unsubscribeEmployees;
       } catch (err: any) {
-        console.error('Query setup error:', err);
+        console.error('Query setup error:', err?.message || err);
         set({ error: err.message, loading: false });
       }
     };
@@ -86,7 +86,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
       await setDoc(doc(db, 'employees', id), { ...employee, id });
       toast.success('تمت إضافة الموظف بنجاح');
     } catch (err: any) {
-      console.error('Error adding employee:', err);
+      console.error('Error adding employee:', err?.message || err);
       toast.error('فشل في إضافة الموظف');
       throw err;
     }
@@ -97,7 +97,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
       await setDoc(doc(db, 'employees', id), updates, { merge: true });
       toast.success('تم تحديث بيانات الموظف');
     } catch (err: any) {
-      console.error('Error updating employee:', err);
+      console.error('Error updating employee:', err?.message || err);
       toast.error('فشل في التحديث');
       throw err;
     }
@@ -108,7 +108,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
       await deleteDoc(doc(db, 'employees', id));
       toast.success('تم حذف الموظف بنجاح');
     } catch (err: any) {
-      console.error('Error deleting employee:', err);
+      console.error('Error deleting employee:', err?.message || err);
       toast.error('فشل في الحذف');
       throw err;
     }
@@ -123,7 +123,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
       await batch.commit();
       toast.success('تم حذف الموظفين المحددين');
     } catch (err: any) {
-      console.error('Error deleting employees:', err);
+      console.error('Error deleting employees:', err?.message || err);
       toast.error('فشل في الحذف');
       throw err;
     }
@@ -183,7 +183,7 @@ export const useEmployeeStore = create<EmployeeStore>((set, get) => ({
       
       toast.success('تم استيراد الموظفين بنجاح');
     } catch (err: any) {
-      console.error('Error importing employees:', err);
+      console.error('Error importing employees:', err?.message || err);
       toast.error('فشل في استيراد الموظفين');
       throw err;
     }

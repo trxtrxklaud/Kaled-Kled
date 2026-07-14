@@ -101,7 +101,7 @@ const Employees: React.FC = () => {
       }
     } catch (error: unknown) {
       if (error instanceof Error && error.name !== 'AbortError') {
-        console.error(error);
+        console.error(error?.message || error);
         toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
       }
     }

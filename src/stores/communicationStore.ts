@@ -64,7 +64,10 @@ export const useCommunicationStore = create<CommunicationStore>((set, get) => ({
       const id = crypto.randomUUID();
       await setDoc(doc(db, 'news', id), { ...newsItem, id, date: new Date().toISOString() });
       toast.success('تمت إضافة الخبر');
-    } catch { toast.error('فشل الإضافة'); }
+    } catch (error) { 
+      console.error("addNews error:", error);
+      toast.error('فشل الإضافة'); 
+    }
   },
 
   deleteNews: async (id) => {

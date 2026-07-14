@@ -29,7 +29,7 @@ export const useWakeLock = () => {
       return () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         if (wakeLock !== null) {
-          wakeLock.release().catch(console.error);
+          wakeLock.release().catch((e) => console.error(e?.message || e));
         }
       };
     }

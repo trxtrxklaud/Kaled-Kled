@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -17,18 +17,14 @@ const databaseId = "ai-studio-ef614327-c07d-45d6-8997-bc4e52c3d2b6";
 // Initialize Firebase
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore specifying the databaseId
-export const db = getFirestore(app, databaseId);
-
-// Enable offline persistence to ensure data is immediately cached in IndexedDB
-import { enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
-enableMultiTabIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-  } else if (err.code === 'unimplemented') {
-    console.warn('The current browser does not support all of the features required to enable persistence');
-  }
-});
+// Initialize Firestore specifying the databaseId and persistent cache
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+}, databaseId);
 
 // Initialize Firebase Authentication
 export const auth = getAuth(app);
+
+// Initialize Firebase Storage
+import { getStorage } from 'firebase/storage';
+export const storage = getStorage(app);

@@ -235,7 +235,7 @@ const CertificateRegistryPage: React.FC = () => {
       addEmailDeliveryLog({
         recipientEmail: managerEmail,
         subject: `Registry certificates resend (${selectedEntries.length})`,
-        provider: import.meta.env.VITE_SMTP_API_ENDPOINT ? 'smtp' : 'emailjs',
+        provider: 'smtp',
         status: 'failed',
         attachmentCount: 1,
         attachmentNames: [zipAttachment.fileName],

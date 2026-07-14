@@ -35,6 +35,13 @@ export const ParentPortal: React.FC = () => {
   const notifications = useNotificationStore(state => state.notifications);
   const { t, isRTL } = useLanguage();
 
+  // Effect to auto-select first child when students load
+  React.useEffect(() => {
+    if (students.length > 0 && !selectedChildId) {
+      setSelectedChildId(students[0].id);
+    }
+  }, [students, selectedChildId]);
+
   const [selectedChildId, setSelectedChildId] = useState<string | null>(students[0]?.id || null);
   
 
@@ -104,12 +111,6 @@ export const ParentPortal: React.FC = () => {
     );
   }
 
-  // Effect to auto-select first child when students load
-  React.useEffect(() => {
-    if (students.length > 0 && !selectedChildId) {
-      setSelectedChildId(students[0].id);
-    }
-  }, [students, selectedChildId]);
 
   const activeChild = students.find(s => s.id === selectedChildId);
 

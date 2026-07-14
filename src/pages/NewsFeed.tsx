@@ -103,7 +103,7 @@ const NewsFeed: React.FC = () => {
       }
       setNewImages(prev => [...prev, ...newPreviews]);
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error('Erreur lors du traitement des images');
     } finally {
       setIsUploading(false);

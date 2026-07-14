@@ -28,42 +28,31 @@ export const sendEmailWithAttachments = async ({
   message,
   attachments,
 }: SendEmailParams): Promise<'smtp' | 'emailjs' | 'manual'> => {
-  const smtpEndpoint = import.meta.env.VITE_SMTP_API_ENDPOINT as string | undefined;
-  const smtpApiKey = import.meta.env.VITE_SMTP_API_KEY as string | undefined;
-
-  let finalAttachments = await Promise.all(attachments.map(async (attachment) => {
-    const content = attachment.base64Data || (attachment.blob ? await blobToDataUrl(attachment.blob) : '');
-    return {
-      fileName: attachment.fileName,
-      content,
-      type: attachment.blob?.type || 'application/octet-stream',
-    };
-  }));
-  // Filter out any empty attachments
-  finalAttachments = finalAttachments.filter(a => a.content);
-
-  if (smtpEndpoint) {
+  // Calling the local backend API which manages the SMTP secret securely
+  try {
+    const backendAttachments = finalAttachments.map(a => ({ fileName: a.fileName, base64Data: a.content }));
     const payload = {
-      to: recipientEmail,
+      recipientEmail,
       subject,
       message,
-      attachments: finalAttachments,
+      attachments: backendAttachments,
     };
-
-    const response = await fetch(smtpEndpoint, {
+    const response = await fetch('/api/email/send', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(smtpApiKey ? { Authorization: `Bearer ${smtpApiKey}` } : {}),
       },
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      throw new Error(`SMTP endpoint failed with status ${response.status}`);
+    if (response.ok) {
+      return 'smtp';
+    } else {
+      console.warn('Backend SMTP API returned error:', await response.text());
     }
-
-    return 'smtp';
+  } catch (error) {
+    console.error('Backend API error:', error);
   }
 
   const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID as string | undefined;

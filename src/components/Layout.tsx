@@ -18,11 +18,13 @@ import { useStudentStore } from '../stores/studentStore';
 import { useEmployeeStore } from '../stores/employeeStore';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useCommunicationStore } from '../stores/communicationStore';
 
 const Layout: React.FC = () => {
   const { isAuthenticated, logout, user, assignedClasses } = useAuth();
   const location = useLocation();
   const { language, setLanguage, isRTL } = useLanguage();
+
   const fetchStudents = useStudentStore(state => state.fetchData);
   const clearStudents = useStudentStore(state => state.clearStore);
   const fetchEmployees = useEmployeeStore(state => state.fetchData);
@@ -31,6 +33,8 @@ const Layout: React.FC = () => {
   const clearSchool = useSchoolStore(state => state.clearStore);
   const fetchSettings = useSettingsStore(state => state.fetchData);
   const clearSettings = useSettingsStore(state => state.clearStore);
+  const fetchCommunication = useCommunicationStore(state => state.fetchData);
+  const clearCommunication = useCommunicationStore(state => state.clearStore);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -40,14 +44,16 @@ const Layout: React.FC = () => {
       fetchEmployees();
       fetchSchool();
       fetchSettings();
+      fetchCommunication();
     } else {
       clearStudents();
       clearEmployees();
       clearSchool();
       clearSettings();
+      clearCommunication();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id, fetchStudents, clearStudents, fetchEmployees, clearEmployees, fetchSchool, clearSchool, fetchSettings, clearSettings]);
+  }, [isAuthenticated, user?.id, fetchStudents, clearStudents, fetchEmployees, clearEmployees, fetchSchool, clearSchool, fetchSettings, clearSettings, fetchCommunication, clearCommunication]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

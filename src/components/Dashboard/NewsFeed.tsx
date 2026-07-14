@@ -29,10 +29,12 @@ const NewsFeed: React.FC = () => {
   const canManage = isAdmin || isStaff;
 
   const getYouTubeId = (url: string) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|\/shorts\/)([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
   };
+
+  const sortedNews = [...news].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
   return (
     <div className="space-y-6">
@@ -44,12 +46,12 @@ const NewsFeed: React.FC = () => {
       </div>
 
       <div className="flex flex-col gap-6">
-        {news.length === 0 ? (
+        {sortedNews.length === 0 ? (
           <div className="py-12 text-center bg-white rounded-[2rem] border border-dashed border-slate-200 shadow-sm">
             <p className="text-sm text-slate-400 italic">{t('no_data')}</p>
           </div>
         ) : (
-          news.map((item, idx) => (
+          sortedNews.map((item, idx) => (
             <motion.div
               key={item.id}
               initial={{ opacity: 0, y: 20 }}
@@ -69,6 +71,23 @@ const NewsFeed: React.FC = () => {
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       ></iframe>
+                    </div>
+                  ) : item.mediaType === 'video' && item.mediaData?.includes('firebasestorage') ? (
+                    <div className="relative aspect-video w-full overflow-hidden bg-slate-900 rounded-b-[2.5rem]">
+                      <video 
+                        src={item.mediaData}
+                        controls
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  ) : item.mediaData ? (
+                    <div className="relative aspect-video w-full overflow-hidden bg-slate-100 rounded-b-[2.5rem]">
+                      <img 
+                        src={item.mediaData}
+                        alt={item.title}
+                        className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(item.mediaData, '_blank')}
+                      />
                     </div>
                   ) : item.mediaUrl ? (
                     <div className="p-8 pb-0">
@@ -143,25 +162,16 @@ const NewsFeed: React.FC = () => {
                       </p>
                     </div>
 
-                    {(item.mediaData || item.mediaUrl) && (item.mediaType === 'link' || !item.mediaType) && (
+                    {item.mediaUrl && !item.mediaData && !getYouTubeId(item.mediaUrl) && (
                       <div className="mt-3">
-                        {item.mediaData ? (
-                          <img 
-                            src={item.mediaData} 
-                            alt={item.title} 
-                            className="w-full max-h-64 object-cover rounded-xl shadow-sm cursor-pointer hover:shadow-md transition-shadow" 
-                            onClick={() => window.open(item.mediaData, '_blank')}
-                          />
-                        ) : (
-                          <Button 
-                            variant="ghost" 
-                            className="p-0 h-auto text-primary font-black text-xs hover:bg-transparent hover:text-primary/80 flex items-center gap-2 group/btn print:hidden"
-                            onClick={() => window.open(item.mediaUrl, '_blank')}
-                          >
-                            {t('read_more')} 
-                            <ExternalLink className="w-3 h-3 transition-transform group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1" />
-                          </Button>
-                        )}
+                        <Button 
+                          variant="ghost" 
+                          className="p-0 h-auto text-primary font-black text-xs hover:bg-transparent hover:text-primary/80 flex items-center gap-2 group/btn print:hidden"
+                          onClick={() => window.open(item.mediaUrl, '_blank')}
+                        >
+                          {t('read_more')} 
+                          <ExternalLink className="w-3 h-3 transition-transform group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1" />
+                        </Button>
                       </div>
                     )}
                   </div>

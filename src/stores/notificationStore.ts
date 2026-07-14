@@ -69,13 +69,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         set({ notifications, loading: false });
       }, (error) => {
-        console.error('Error fetching notifications:', error);
+        console.error('Error fetching notifications:', error?.message || error);
         set({ loading: false });
       });
 
       set({ unsubscribeNotifications: unsubscribe });
     } catch (error) {
-      console.error('Notification setup failed:', error);
+      console.error('Notification setup failed:', error?.message || error);
       set({ loading: false });
     }
   },
@@ -89,7 +89,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       set({ events, loading: false });
     } catch (error) {
-      console.error('Error fetching notification events:', error);
+      console.error('Error fetching notification events:', error?.message || error);
       set({ loading: false });
     }
   },
@@ -101,7 +101,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       
       await setDoc(doc(db, 'notifications', id), { ...notification, isRead: true });
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error('Error marking notification as read:', error?.message || error);
     }
   },
 
@@ -137,7 +137,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       await setDoc(doc(db, 'notifications', notifId), notification);
 
     } catch (error) {
-      console.error('Error creating notification event:', error);
+      console.error('Error creating notification event:', error?.message || error);
     }
   },
 

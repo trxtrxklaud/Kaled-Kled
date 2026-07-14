@@ -78,16 +78,16 @@ const HomeworkPage: React.FC = () => {
   const visibleClasses = isTeacher ? assignedClasses : CLASSES;
 
   // Filter for Parents
-  const childClassMatch = isParent 
-    ? students.find(s => user?.childrenIds?.includes(s.id))?.class 
-    : null;
+  const parentClasses = isParent 
+    ? students.filter(s => user?.childrenIds?.includes(s.id)).map(s => s.class)
+    : [];
 
-  const filteredHomeworks = (isParent && childClassMatch)
-    ? homeworks.filter(hw => hw.classes?.includes(childClassMatch) || hw.classes?.includes('Tous'))
+  const filteredHomeworks = isParent
+    ? homeworks.filter(hw => hw.classes?.some(c => parentClasses.includes(c)) || hw.classes?.includes('Tous') || hw.classes?.includes('all'))
     : homeworks;
 
-  const filteredAssets = (isParent && childClassMatch)
-    ? academicAssets.filter(asset => asset.classId === 'all' || asset.classId === childClassMatch)
+  const filteredAssets = isParent
+    ? academicAssets.filter(asset => asset.classId === 'all' || asset.classId === 'Tous' || parentClasses.includes(asset.classId))
     : academicAssets;
 
   const resetWizard = () => {
@@ -184,7 +184,7 @@ const HomeworkPage: React.FC = () => {
         reader.readAsDataURL(file);
       }
     } catch (err) {
-      console.error('[ImagePicker] Error:', err);
+      console.error('[ImagePicker] Error:', err?.message || err);
       toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
       setUploadedFile(null);
       setUploadedFilePreview(null);
@@ -231,7 +231,7 @@ const HomeworkPage: React.FC = () => {
       }
       toast.success(`Média ajouté sous ${subjectKey}`);
     } catch (err) {
-      console.error('[ImagePicker] Error:', err);
+      console.error('[ImagePicker] Error:', err?.message || err);
       toast.error("حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى");
     } finally {
       (e.target as HTMLInputElement).value = '';
@@ -244,22 +244,42 @@ const HomeworkPage: React.FC = () => {
       return;
     }
 
-    const homeworkData = {
+    const homeworkData: any = {
       title: title.trim(),
       description: description.trim(),
       classes: [...selectedClasses],
       subject,
       session,
-      fileName: uploadedFile || undefined,
-      fileData: uploadedFilePreview || undefined, // store base64 if it successfully processed
       uploadDate: new Date().toISOString(),
     };
+    if (uploadedFile) homeworkData.fileName = uploadedFile;
+    if (uploadedFilePreview) homeworkData.fileData = uploadedFilePreview;
 
     if (editingHomework) {
       updateHomework(editingHomework.id as string, homeworkData);
       toast.success('Devoir mis à jour !');
     } else {
       addHomework(homeworkData);
+      
+      if (uploadedFile && uploadedFilePreview) {
+        let mimeType = 'application/octet-stream';
+        if (uploadedFilePreview.startsWith('data:')) {
+          mimeType = uploadedFilePreview.substring(5, uploadedFilePreview.indexOf(';'));
+        } else if (/\.(png|jpe?g|gif|webp|svg)$/i.test(uploadedFile)) {
+          mimeType = 'image/jpeg';
+        }
+
+        selectedClasses.forEach(cls => {
+          addAcademicAsset({
+            fileName: `${title} - ${uploadedFile}`,
+            mimeType,
+            payload: uploadedFilePreview,
+            subjectKey: subject,
+            classId: cls
+          });
+        });
+      }
+
       toast.success(t('publish_homework') + ' !');
     }
     closeWizard();
@@ -355,8 +375,8 @@ const HomeworkPage: React.FC = () => {
                   {/* File preview using the fixed dynamic image/file layout from Schedules.tsx */}
                   {hw.fileName && (
                     <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
-                      <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => { if (/\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName!)) { setPreviewLightbox(hw.fileData || `${SERVER_BASE_URL}${hw.fileName}`); } }}>
-                        {/\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName) ? (
+                      <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => { if ((hw.fileName && /\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName)) || (hw.fileData && hw.fileData.startsWith('data:image/'))) { setPreviewLightbox(hw.fileData || `${SERVER_BASE_URL}${hw.fileName}`); } }}>
+                        {((hw.fileName && /\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName)) || (hw.fileData && hw.fileData.startsWith('data:image/'))) ? (
                           <img 
                             src={hw.fileData || `${SERVER_BASE_URL}${hw.fileName}`} 
                             alt={hw.fileName} 
@@ -371,7 +391,7 @@ const HomeworkPage: React.FC = () => {
                             }}
                           />
                         ) : null}
-                        <div className={`fallback-icon ${/\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName) ? 'hidden' : 'flex'} items-center justify-center w-12 h-12 text-primary bg-primary/5 rounded-md border border-primary/10`}>
+                        <div className={`fallback-icon ${((hw.fileName && /\.(png|jpe?g|gif|webp|svg)$/i.test(hw.fileName)) || (hw.fileData && hw.fileData.startsWith('data:image/'))) ? 'hidden' : 'flex'} items-center justify-center w-12 h-12 text-primary bg-primary/5 rounded-md border border-primary/10`}>
                           <FileText className="w-6 h-6" />
                         </div>
                       </div>
@@ -556,28 +576,46 @@ const HomeworkPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('subject')}</Label>
-                  <select 
-                    className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold"
-                    value={subject}
-                    onChange={e => setSubject(e.target.value)}
-                  >
-                    <option value="">-- Select Matière --</option>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[160px] overflow-y-auto p-2 bg-slate-50/50 rounded-2xl border border-slate-100">
                     {SUBJECTS.map(s => (
-                      <option key={s} value={s}>{s}</option>
+                      <label 
+                        key={s} 
+                        className={`flex items-center gap-2 p-2 bg-white rounded-xl cursor-pointer border transition-all hover:bg-slate-50 has-[:checked]:bg-primary/10 has-[:checked]:border-primary ${subject === s ? 'border-primary shadow-sm' : 'border-transparent'}`}
+                      >
+                        <input 
+                          type="radio" 
+                          name="subject"
+                          value={s}
+                          checked={subject === s}
+                          onChange={() => setSubject(s)}
+                          className="hidden"
+                        />
+                        <span className={`text-xs font-black line-clamp-1 ${subject === s ? 'text-primary' : 'text-slate-700'}`}>{s}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
+
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{t('sessions')}</Label>
-                  <select 
-                    className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold"
-                    value={session}
-                    onChange={e => setSession(e.target.value)}
-                  >
+                  <div className="grid grid-cols-3 gap-2 p-2 bg-slate-50/50 rounded-2xl border border-slate-100">
                     {SESSIONS.map(s => (
-                      <option key={s} value={s}>{s}</option>
+                      <label 
+                        key={s} 
+                        className={`flex items-center justify-center gap-2 p-2.5 bg-white rounded-xl cursor-pointer border transition-all hover:bg-slate-50 has-[:checked]:bg-primary/10 has-[:checked]:border-primary ${session === s ? 'border-primary shadow-sm' : 'border-transparent'}`}
+                      >
+                        <input 
+                          type="radio" 
+                          name="session"
+                          value={s}
+                          checked={session === s}
+                          onChange={() => setSession(s)}
+                          className="hidden"
+                        />
+                        <span className={`text-xs font-black ${session === s ? 'text-primary' : 'text-slate-700'}`}>{s}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
                 <p className="text-xs text-slate-400">Step 3: Specify the subject and session details.</p>
               </div>
@@ -619,10 +657,10 @@ const HomeworkPage: React.FC = () => {
                       >
                         <X className="w-3 h-3" />
                       </Button>
-                      {uploadedFilePreview && /\.(png|jpe?g|gif|webp|svg)$/i.test(uploadedFile) ? (
+                      {uploadedFilePreview && ((uploadedFile && /\.(png|jpe?g|gif|webp|svg)$/i.test(uploadedFile)) || uploadedFilePreview.startsWith('data:image/')) ? (
                         <img 
                           src={uploadedFilePreview} 
-                          alt={uploadedFile} 
+                          alt={uploadedFile || 'preview'} 
                           className="w-20 h-20 object-cover rounded-xl border border-primary/20 shadow-sm mb-2" 
                         />
                       ) : (

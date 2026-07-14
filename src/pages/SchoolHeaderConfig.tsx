@@ -41,7 +41,7 @@ const SchoolHeaderConfig: React.FC = () => {
       }
       toast.success(isRTL ? 'تم تحديث الملف البصري' : 'Fichier graphique mis à jour');
     } catch (err) {
-      console.error(err);
+      console.error(err?.message || err);
       toast.error('Erreur lors du traitement du fichier');
     } finally {
       event.target.value = '';
