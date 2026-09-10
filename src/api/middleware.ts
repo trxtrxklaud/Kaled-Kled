@@ -1,7 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default_jwt_secret_for_development';
+/**
+ * Fail-closed secret: production refuses to boot without JWT_SECRET
+ * (no more silent insecure default). Development keeps a loud fallback.
+ */
+function resolveJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET is required in production.');
+    }
+    console.warn('[auth] JWT_SECRET missing — using INSECURE development fallback.');
+    return 'default_jwt_secret_for_development';
+  }
+  return s;
+}
+
+const JWT_SECRET = resolveJwtSecret();
 
 export interface AuthRequest extends Request {
   user?: {
