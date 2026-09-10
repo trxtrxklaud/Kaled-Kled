@@ -6,13 +6,16 @@ import { useAcademicStore } from '../stores/academicStore';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useFinanceStore } from '../stores/financeStore';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useCommunicationStore } from '../stores/communicationStore';
 import { useLanguage } from '../contexts/LanguageContext';
+import { toast } from 'sonner';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { 
   Users, 
   Calendar, 
@@ -22,6 +25,7 @@ import {
   AlertCircle, 
   Bell, 
   CreditCard,
+  Send,
   Info
 } from 'lucide-react';
 
@@ -44,6 +48,12 @@ export const ParentPortal: React.FC = () => {
   }, [students, selectedChildId]);
 
   const [selectedChildId, setSelectedChildId] = useState<string | null>(students[0]?.id || null);
+
+  // Parent → school notes form state (handler lives below, next to unreadNotifs)
+  const addMessage = useCommunicationStore(state => state.addMessage);
+  const [noteSubject, setNoteSubject] = useState('');
+  const [noteBody, setNoteBody] = useState('');
+  const [noteSending, setNoteSending] = useState(false);
 
   // Platform live data (additive): children + ledger from Laravel, cached 45s server-side.
   // When unavailable (no session/offline), the Firestore sections below keep working.
@@ -176,6 +186,29 @@ export const ParentPortal: React.FC = () => {
   const childArrears = financeArrears.filter(f => f.studentId === activeChild?.id && f.status === 'pending');
 
   const unreadNotifs = notifications.filter(n => !n.isRead).length;
+
+  // Parent → school notes: written to the EXISTING messages inbox
+  // (staff reads it in Communication). No new collection, no new page.
+  const handleSendNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noteBody.trim()) return;
+    setNoteSending(true);
+    try {
+      const childTag = activeChild ? ` [${activeChild.fullName}]` : '';
+      await addMessage({
+        name: `${user?.name || ''} (${user?.phone || ''})`.trim(),
+        subject: `${noteSubject.trim() || (isRTL ? 'ملاحظة ولي' : 'Note parent')}${childTag}`,
+        message: noteBody.trim(),
+      });
+      setNoteSubject('');
+      setNoteBody('');
+      toast.success(isRTL ? 'تم إرسال ملاحظتك إلى المدرسة' : 'Message envoyé à l\'école');
+    } catch {
+      toast.error(isRTL ? 'تعذر إرسال الملاحظة' : 'Échec d\'envoi');
+    } finally {
+      setNoteSending(false);
+    }
+  };
 
   return (
     <div className={`space-y-6 pb-24 ${isRTL ? 'text-right' : 'text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -454,6 +487,54 @@ export const ParentPortal: React.FC = () => {
           </Card>
 
         </div>
+      )}
+
+      {/* Contact the school — visible to parents only */}
+      {user?.role === 'parent' && (
+      <div className="mt-8">
+        <h2 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4 px-2">
+          {isRTL ? 'مراسلة المدرسة' : 'Contacter l\'école'}
+        </h2>
+        <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+          <CardContent className="p-5">
+            <form onSubmit={handleSendNote} className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                  {isRTL ? 'الموضوع (اختياري)' : 'Objet (optionnel)'}
+                </Label>
+                <Input
+                  value={noteSubject}
+                  onChange={(e) => setNoteSubject(e.target.value)}
+                  placeholder={isRTL ? 'مثال: استفسار عن الغياب' : 'Ex : question sur une absence'}
+                  className="h-12 rounded-2xl bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                  {isRTL ? 'نص الملاحظة' : 'Message'}
+                </Label>
+                <Textarea
+                  value={noteBody}
+                  onChange={(e) => setNoteBody(e.target.value)}
+                  placeholder={isRTL ? 'اكتب ملاحظتك هنا...' : 'Écrivez votre message...'}
+                  className="min-h-28 rounded-2xl bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={noteSending || !noteBody.trim()}
+                className="w-full h-12 rounded-2xl bg-primary hover:bg-primary/95 text-white font-black uppercase tracking-widest shadow-xl shadow-primary/20 active:scale-[0.99] disabled:opacity-50"
+              >
+                <Send className={`w-4 h-4 ${isRTL ? 'rotate-180 ml-2' : 'mr-2'}`} />
+                {noteSending
+                  ? (isRTL ? 'جاري الإرسال...' : 'Envoi...')
+                  : (isRTL ? 'إرسال الملاحظة' : 'Envoyer')}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
       )}
 
       {/* Global Announcements */}
