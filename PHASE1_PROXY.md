@@ -94,10 +94,17 @@ Deploy (via Hostinger terminal/SSH as a non-root user):
 
 ```bash
 git pull origin main
-npm install --omit=dev
+npm install          # full install: vite/esbuild/tsx are devDependencies needed for build
 npm run build
-# then Restart the Node.js app from the panel
+npm install -g pm2   # once per host
+pm2 start ecosystem.config.cjs --update-env
+pm2 save             # plus `pm2 startup` once (needs sudo)
 ```
+
+`ecosystem.config.cjs` (committed) runs `dist/server.cjs` with plain node — it must be
+`.cjs` because this repo is `"type": "module"`. Secrets stay in host env, never in the file.
+Order on a fresh host: DNS A records → HTTP nginx block → `certbot --nginx` → reload.
+Use plain comma-separated URLs in `CORS_ALLOWED_ORIGINS` (no markdown).
 
 Notes:
 
