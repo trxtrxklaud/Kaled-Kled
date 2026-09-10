@@ -12,6 +12,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import PrivateRoute from "./components/PrivateRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
+import InstallPrompt from "./components/InstallPrompt";
 
 // Lazy-loaded pages
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -108,6 +109,7 @@ function App({
     <ErrorBoundary>
       <RouterWrapper>
         <RoutePersistence />
+        <InstallPrompt />
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
