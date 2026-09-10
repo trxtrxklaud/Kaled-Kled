@@ -16,7 +16,7 @@ const LoginSchoolIllustration = () => (
     <div className="absolute inset-0 bg-slate-900/40 mix-blend-multiply z-10 transition-all duration-700 hover:bg-slate-900/20"></div>
     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent z-10"></div>
     <img 
-        src="https://images.unsplash.com/photo-1577896851231-70ef18881754?q=80&w=2070&auto=format&fit=crop"
+        src="/images/login-bg.jpg"
         alt="Happy students learning"
         referrerPolicy="no-referrer"
         className="w-full h-full object-cover transition-transform duration-[20s] hover:scale-110 object-center"

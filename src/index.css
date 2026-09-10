@@ -1,5 +1,5 @@
 
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Tajawal:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "./fonts.css";
 @import "tailwindcss";
 
 @layer base {

@@ -37,7 +37,7 @@ const SchoolIllustration = () => (
      <div className="w-[300px] h-[200px] lg:w-[400px] lg:h-[260px] rounded-3xl overflow-hidden shadow-2xl border-[6px] border-white/60 transform -rotate-3 relative transition-transform duration-700 hover:rotate-0 hover:scale-105">
        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10"></div>
        <img 
-         src="https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2022&auto=format&fit=crop" 
+          src="/images/dashboard-bg.jpg"
          alt="Students in classroom" 
          referrerPolicy="no-referrer"
          className="w-full h-full object-cover"

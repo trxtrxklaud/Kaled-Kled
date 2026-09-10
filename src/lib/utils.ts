@@ -19,25 +19,25 @@ export const isFemaleName = (name: string): boolean => {
   return false;
 };
 
-export const getAvatarUrl = (name: string, style: 'student' | 'employee' = 'student'): string => {
-  const isFemale = isFemaleName(name);
-  
-  if (style === 'employee') {
-    const maleTop = 'shortHair,shortHairDreads01,shortHairDreads02,shortHairShortCurly,shortHairShortFlat,shortHairShortRound,shortHairShortWaved,shortHairSides,shortHairTheCaesar';
-    const femaleTop = 'longHairBob,longHairBun,longHairCurly,longHairCurvy,longHairMiaWallace,longHairStraight';
-    const top = isFemale ? femaleTop : maleTop;
-    const clothing = isFemale ? 'blazerAndShirt,blazerAndSweater,collarAndSweater' : 'blazerAndShirt,blazerAndSweater,shirtCrewNeck,collarAndSweater';
-    const facialHair = isFemale ? '0' : '20';
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}&backgroundColor=f8fafc&top=${top}&clothing=${clothing}&facialHairProbability=${facialHair}`;
-  } else {
-    // For students, maybe simpler or younger looking
-    const maleTop = 'shortHair,shortHairShaggyMultipile,shortHairShortCurly,shortHairShortFlat,shortHairShortRound,shortHairShortWaved';
-    const femaleTop = 'longHairBigHair,longHairBob,longHairBun,longHairCurly,longHairCurvy,longHairStraight';
-    const top = isFemale ? femaleTop : maleTop;
-    const clothing = 'hoodie,overall,shirtCrewNeck';
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}&backgroundColor=f8fafc&top=${top}&clothing=${clothing}&facialHairProbability=0`;
-  }
+/**
+ * أفاتار محلي 100% (SVG data-URI): أول حرفين من الاسم على خلفية ملوّنة حتمية.
+ * يعمل دون اتصال ولا يعتمد على أي خدمة خارجية. نفس التوقيع السابق.
+ */
+export const getAvatarUrl = (name: string, _style: 'student' | 'employee' = 'student'): string => {
+  const clean = (name || '').trim() || '?';
+  const initials = clean.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+  let hash = 0;
+  for (let i = 0; i < clean.length; i += 1) hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96">`
+    + `<rect width="96" height="96" rx="48" fill="hsl(${hue},45%,42%)"/>`
+    + `<text x="48" y="60" font-family="sans-serif" font-size="36" font-weight="bold" `
+    + `fill="#ffffff" text-anchor="middle">${initials.replace(/[<>&"]/g, '')}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
+
+/** صورة الاحتياط المحلية عند فشل تحميل أي صورة (بدل خدمات خارجية). */
+export const FALLBACK_AVATAR = getAvatarUrl('?');
 
 export const safeOpenExternalLink = (url: string) => {
   const a = document.createElement('a');

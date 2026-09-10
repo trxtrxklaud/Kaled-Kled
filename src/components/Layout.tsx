@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger
 } from './ui/dropdown-menu';
 import ErrorBoundary from './ErrorBoundary';
-import { triggerPrint, getAvatarUrl } from '../lib/utils';
+import { triggerPrint, getAvatarUrl, FALLBACK_AVATAR } from '../lib/utils';
 import { useStudentStore } from '../stores/studentStore';
 import { useEmployeeStore } from '../stores/employeeStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -90,7 +90,7 @@ const Layout: React.FC = () => {
             <div className="w-10 h-10 flex-shrink-0 rounded-full border border-white bg-white flex items-center justify-center overflow-hidden shadow-sm">
                 <img 
                  src={getAvatarUrl(user?.username || 'admin', 'employee')} 
-                 onError={(e) => { (e.currentTarget as HTMLImageElement).src = "https://placehold.co/48?text=?"; }} 
+                 onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_AVATAR; }} 
                  alt="Profile" 
                  className="w-full h-full object-cover" 
                />
