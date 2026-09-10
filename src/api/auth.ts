@@ -81,9 +81,12 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const payload = (envelope.data ?? {}) as Record<string, unknown>;
     const user = (payload.user ?? {}) as Record<string, unknown>;
     if (status !== 200 || !envelope.success || !user.id) {
+      // Anti-enumeration: unknown identifier and wrong secret return the SAME message,
+      // otherwise phone numbers could be probed for registered accounts.
+      const uniform = status === 401 ? 'بيانات الدخول غير صحيحة.' : null;
       res.status(status === 200 ? 401 : status).json({
         success: false,
-        message: asText(envelope.message) || 'Invalid credentials.',
+        message: uniform || asText(envelope.message) || 'Invalid credentials.',
       });
       return;
     }
