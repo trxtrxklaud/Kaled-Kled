@@ -11,7 +11,8 @@ import {
   FileUp, 
   CheckCircle,
   AlertCircle,
-  Printer
+  Printer,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -20,6 +21,7 @@ import { toast } from 'sonner';
 import type { ImportFinanceData } from '../lib/types';
 import * as XLSX from '../lib/xlsx';
 import { triggerPrint } from '../lib/utils';
+import { syncArrearsFromPlatform } from '../lib/providenceSync';
 
 const Finance: React.FC = () => {
   const { financeArrears, addFinanceArrear, updateFinanceArrear, sendPaymentReminder } = useFinanceStore();
@@ -27,6 +29,7 @@ const Finance: React.FC = () => {
   const { t, isRTL } = useLanguage();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [syncingPlatform, setSyncingPlatform] = useState(false);
 
   const handlePrint = () => {
     triggerPrint();
@@ -162,9 +165,29 @@ const Finance: React.FC = () => {
           >
             <Printer className="w-5 h-5" />
           </Button>
-          <Button 
-            variant="outline" 
-            size="icon" 
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 rounded-2xl border-slate-200 text-primary hover:bg-slate-50 shadow-sm"
+            disabled={syncingPlatform}
+            title={isRTL ? 'مزامنة المتخلدات من المنصة' : 'Synchroniser depuis la plateforme'}
+            onClick={async () => {
+              setSyncingPlatform(true);
+              try {
+                const r = await syncArrearsFromPlatform();
+                toast.success(isRTL ? `تمت المزامنة: ${r.count} سطر (${r.total} د)` : `${r.count} lignes synchronisées`);
+              } catch (e) {
+                toast.error((e as Error)?.message || (isRTL ? 'تعذرت المزامنة' : 'Échec de synchronisation'));
+              } finally {
+                setSyncingPlatform(false);
+              }
+            }}
+          >
+            <RefreshCw className={`w-5 h-5 ${syncingPlatform ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
             className="h-11 w-11 rounded-2xl border-slate-200 text-primary hover:bg-slate-50 shadow-sm"
             onClick={() => setIsImportOpen(true)}
           >

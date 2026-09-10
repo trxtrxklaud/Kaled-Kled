@@ -21,7 +21,8 @@ import {
   MessageCircle,
   FileText,
   Undo2,
-  Save
+  Save,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -39,6 +40,7 @@ import { toast } from 'sonner';
 import { printHtmlContent, getAvatarUrl } from '../lib/utils';
 import type { AttendanceRecord, Student, Homework } from '../lib/types';
 import * as XLSX from '../lib/xlsx';
+import { syncStudentsFromPlatform } from '../lib/providenceSync';
 
 const stringToColor = (str: string) => {
   let hash = 0;
@@ -81,6 +83,7 @@ const Students: React.FC = () => {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<Student | null>(null);
   const [deletedStack, setDeletedStack] = useState<Student[][]>([]);
+  const [syncingPlatform, setSyncingPlatform] = useState(false);
 
   const handleUndo = () => {
     if (deletedStack.length === 0) return;
@@ -523,8 +526,26 @@ const Students: React.FC = () => {
           </Button>
           {canModify && (
             <>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
+                className="h-10 sm:h-11 px-4 rounded-full border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm font-semibold text-xs"
+                disabled={syncingPlatform}
+                onClick={async () => {
+                  setSyncingPlatform(true);
+                  try {
+                    const n = await syncStudentsFromPlatform();
+                    toast.success(isRTL ? `تمت المزامنة من المنصة (${n} جديد)` : `Synchronisé depuis la plateforme (${n})`);
+                  } catch (e) {
+                    toast.error((e as Error)?.message || (isRTL ? 'تعذرت المزامنة' : 'Échec de synchronisation'));
+                  } finally {
+                    setSyncingPlatform(false);
+                  }
+                }}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${syncingPlatform ? 'animate-spin' : ''}`} /> {isRTL ? 'مزامنة المنصة' : 'Sync'}
+              </Button>
+              <Button
+                variant="outline"
                 className="h-10 sm:h-11 px-4 rounded-full border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm font-semibold text-xs"
                 onClick={() => setIsImportDialogOpen(true)}
               >
