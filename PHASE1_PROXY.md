@@ -78,7 +78,39 @@ allowlist are dropped before forwarding; `:id` params must be digits.
 - [ ] With token removed → sync buttons show the "not configured" error, CSV import still works
 - [ ] Install PWA on Android + iPhone, open `/finance` offline (shell loads, data from device)
 
-## 7. Known issues (not fixed here)
+## 8. Hostinger deploy (verified against this codebase)
+
+Panel values:
+
+- **Application root:** the folder holding `package.json` + `dist/`
+- **Application startup file:** `dist/server.cjs` (the `npm run build` bundle — NOT `server.ts`,
+  which needs `tsx` and dev dependencies)
+- **Node.js:** 20+
+- **Environment variables** (panel UI, never a committed file):
+  `NODE_ENV=production`, `PORT` (provided by Hostinger — the server reads it),
+  `PROVIDENCE_API_BASE`, `PROVIDENCE_API_TOKEN`
+
+Deploy (via Hostinger terminal/SSH as a non-root user):
+
+```bash
+git pull origin main
+npm install --omit=dev
+npm run build
+# then Restart the Node.js app from the panel
+```
+
+Notes:
+
+- `server.cjs` is bundled with `--packages=external`, so `express/cors/cookie-parser/jsonwebtoken`
+  must be installed on the host (`npm install --omit=dev` covers them).
+- Static files are served from `dist/` by the app itself; the SPA fallback is already
+  Express-5-safe (`*all`). Do not replace it with bare `*` (crashes on Express 5).
+- Same-origin `/api/providence` calls work on any domain — no frontend URL change needed
+  when moving hosts. `CORS_ALLOWED_ORIGINS`/`SANCTUM_STATEFUL_DOMAINS` belong to the
+  Laravel platform `.env` (§2), not to this server.
+- Never upload a real `.env` over FTP; use the panel's environment variables screen.
+
+## 9. Known issues (not fixed here)
 
 - `/api/mobile/admin/*` on the platform enforces `auth:sanctum + active` only, without granular
   permission middleware — restrict before issuing the service token (platform-side decision).

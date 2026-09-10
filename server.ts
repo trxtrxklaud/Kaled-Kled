@@ -11,7 +11,8 @@ import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Hostinger/Node hosts inject PORT — never hardcode it.
+  const PORT = Number(process.env.PORT || 3000);
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
