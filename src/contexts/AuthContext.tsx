@@ -1,14 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from '../lib/types';
-import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
 import { useLocalStorage } from '../lib/useLocalStorage';
 
+/**
+ * Phase 2 — identity comes from Laravel (via same-origin server sessions).
+ * Firebase Auth is no longer used for login. Firestore still backs DATA
+ * (Phase 3+); role extras kept from the admin-maintained Firestore docs.
+ */
 interface AuthContextType {
   user: User | null;
   updateUser: (user: any) => void;
   login: (username: string, password: string) => Promise<{ success: boolean; role?: string; message?: string }>;
+  requestParentOtp: (phone: string) => Promise<{ success: boolean; message?: string }>;
+  verifyParentOtp: (phone: string, code: string) => Promise<{ success: boolean; role?: string; message?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -22,108 +26,142 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function postJson(path: string, body: Record<string, unknown>): Promise<any> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !(data && (data as { success?: boolean }).success)) {
+    throw new Error((data as { message?: string })?.message || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+/** Admin-maintained links (same source the Parents page writes): phone → children. */
+async function findChildrenByPhone(phone: string): Promise<string[]> {
+  try {
+    const { collection, query, where, getDocs } = await import('firebase/firestore');
+    const { db } = await import('../lib/firebase');
+    const digits = phone.replace(/\D+/g, '');
+    const tail = digits.slice(-8);
+    const snap = await getDocs(query(collection(db, 'parentUsers')));
+    const match = snap.docs
+      .map((d) => d.data() as { phone?: string; childrenIds?: string[] })
+      .find((p) => (p.phone || '').replace(/\D+/g, '').slice(-8) === tail && tail !== '');
+    return Array.isArray(match?.childrenIds) ? match.childrenIds : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Extra role data kept in the admin-maintained Firestore users doc (email match). */
+async function findExtrasByEmail(email: string): Promise<{ assignedClasses: string[]; childrenIds: string[] }> {
+  const empty = { assignedClasses: [], childrenIds: [] };
+  if (!email) return empty;
+  try {
+    const { collection, query, where, getDocs } = await import('firebase/firestore');
+    const { db } = await import('../lib/firebase');
+    const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+    if (snap.empty) return empty;
+    const d = snap.docs[0].data() as { assignedClasses?: string[]; childrenIds?: string[] };
+    return {
+      assignedClasses: Array.isArray(d.assignedClasses) ? d.assignedClasses : [],
+      childrenIds: Array.isArray(d.childrenIds) ? d.childrenIds : [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useLocalStorage<any>('auth_user_session', null);
   const [loading, setLoading] = useState(true);
 
+  // Restore session from the httpOnly cookie via /me; extras stay in localStorage.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            const newUser = {
-              id: firebaseUser.uid,
-              username: firebaseUser.email || '',
-              role: data.role || 'parent',
-              name: data.name || '',
-              assignedClasses: data.assignedClasses || [],
-              childrenIds: data.childrenIds || [],
-              phone: data.phone || '',
-              mustChangePassword: data.mustChangePassword || false
-            };
-            setUser(newUser);
-            syncBackendSession(newUser);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json().catch(() => null);
+        if (!cancelled) {
+          if (res.ok && data && data.success && data.user) {
+            setUser((prev: any) => ({ ...(prev || {}), ...data.user }));
+          } else {
+            setUser(null);
           }
-        } catch (error) {
-          console.error("Error fetching user data", error);
         }
-      } else {
-        setUser(null);
+      } catch {
+        if (!cancelled) setUser(null);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [setUser]);
-
-  const syncBackendSession = async (userObj: any) => {
-    try {
-      await fetch('/api/auth/sync-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: userObj.id,
-          email: userObj.username,
-          role: userObj.role,
-          name: userObj.name,
-          uid: userObj.id
-        })
-      });
-    } catch (e: any) {
-      console.error('Failed to sync backend session', e?.message || e);
-    }
-  };
 
   const login = async (username: string, password: string): Promise<{ success: boolean; role?: string; message?: string }> => {
     try {
-      // For username or phone logic
-      const email = username.includes('@') ? username : `${username}@providence.com`;
-      
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Fetch user role
-      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-      
-      let role = 'parent';
-      let name = '';
-      let assignedClasses: string[] = [];
-      let childrenIds: string[] = [];
-      let phone = '';
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        role = data.role || 'parent';
-        name = data.name || '';
-        assignedClasses = data.assignedClasses || [];
-        childrenIds = data.childrenIds || [];
-        phone = data.phone || '';
-      }
-
-      const newUser: User = { 
-        id: userCredential.user.uid, 
-        username: email, 
-        role: role as any, 
-        name, 
-        assignedClasses,
-        childrenIds,
-        phone
+      const data = await postJson('/api/auth/login', { identifier: username, password });
+      const u = data.user;
+      const extras = await findExtrasByEmail(u.email || '');
+      const newUser: User = {
+        id: u.id,
+        username: u.username || u.email || '',
+        role: u.role,
+        name: u.name || '',
+        assignedClasses: extras.assignedClasses,
+        childrenIds: extras.childrenIds,
+        phone: u.phone || '',
       };
-
       setUser(newUser);
-      await syncBackendSession(newUser);
-      
-      return { success: true, role };
+      return { success: true, role: u.role };
     } catch (error: any) {
-      console.error('Login error', error?.message || error);
       return { success: false, message: error?.message || 'Invalid credentials' };
     }
   };
 
+  const requestParentOtp = async (phone: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const data = await postJson('/api/auth/parent/request-otp', { phone });
+      return { success: true, message: data.message || 'OTP sent' };
+    } catch (error: any) {
+      return { success: false, message: error?.message || 'OTP request failed' };
+    }
+  };
+
+  const verifyParentOtp = async (phone: string, code: string): Promise<{ success: boolean; role?: string; message?: string }> => {
+    try {
+      const data = await postJson('/api/auth/parent/verify-otp', { phone, code });
+      const u = data.user;
+      const childrenIds = await findChildrenByPhone(phone);
+      const newUser: User = {
+        id: u.id,
+        username: u.username || u.email || '',
+        role: 'parent',
+        name: u.name || '',
+        assignedClasses: [],
+        childrenIds,
+        phone: u.phone || phone,
+      };
+      setUser(newUser);
+      return { success: true, role: 'parent' };
+    } catch (error: any) {
+      return { success: false, message: error?.message || 'Invalid code' };
+    }
+  };
+
   const logout = async () => {
-    try { await fetch("/api/auth/logout", { method: "POST" }); } catch (e) {}
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      /* best effort */
+    }
     setUser(null);
-    await signOut(auth).catch((e) => console.error(e?.message || e));
   };
 
   const isAuthenticated = !!user;
@@ -136,9 +174,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const assignedClasses = user?.assignedClasses || [];
 
   return (
-    <AuthContext.Provider value={{ 
-       user, updateUser: setUser, login, logout, isAuthenticated, isAdmin, isStaff, isTeacher, isParent,
-      canAccessFinance, canModifySystem, assignedClasses 
+    <AuthContext.Provider value={{
+      user, updateUser: setUser, login, requestParentOtp, verifyParentOtp, logout, isAuthenticated,
+      isAdmin, isStaff, isTeacher, isParent, canAccessFinance, canModifySystem, assignedClasses,
     }}>
       {!loading && children}
     </AuthContext.Provider>

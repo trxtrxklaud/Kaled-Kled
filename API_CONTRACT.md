@@ -16,6 +16,16 @@ Envelope: `{success: true, data: ...}` — paginated lists use Laravel paginator
 | `POST /api/mobile/parent/verify-otp` | `phone` + `code` | parent user (find-or-create) + token |
 | `POST /api/auth/parent/request-code` + `verify-code` | `phone`, `email` + code | parent registration + `parent-pwa` token |
 
+## 1b. Node session bridge (this server — no browser tokens)
+
+| Call | Forwards to | Returns |
+|---|---|---|
+| `POST /api/auth/login` `{identifier, password}` | `POST {BASE}/auth/gmail-login` | httpOnly session cookie + `{success, user}` |
+| `POST /api/auth/login/parent/request-otp` `{phone}` | platform `request-otp` | platform message passthrough |
+| `POST /api/auth/login/parent/verify-otp` `{phone, code}` | platform `verify-otp` | httpOnly session cookie + `{success, user(role:parent)}` |
+| `POST /api/auth/logout` | — (local) | clears cookie |
+| `GET /api/auth/me` | — (cookie JWT) | `{success, user}` or 401 |
+
 ## 2. Parent scope (`mobile_role:parent` + `view_own_children`)
 
 Children = students whose `guardian_phone`/`mother_phone` match `users.phone` (last 8 digits),
