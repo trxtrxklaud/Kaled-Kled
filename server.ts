@@ -5,6 +5,7 @@ import authRoutes from "./src/api/auth";
 import emailRoutes from "./src/api/email";
 import eduservRoutes from "./src/api/eduserv";
 import providenceRoutes from "./src/api/providence";
+import meRoutes from "./src/api/me";
 import { requireAuth, requireRole } from "./src/api/middleware";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
@@ -31,6 +32,8 @@ async function startServer() {
   app.use("/api/eduserv", eduservRoutes);
   // Phase 1 — read-only proxy to the Providence platform (server-side token)
   app.use("/api/providence", providenceRoutes);
+  // User-scoped reads (per-session platform token, 45s cache)
+  app.use("/api/me", meRoutes);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

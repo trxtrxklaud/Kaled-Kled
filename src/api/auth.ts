@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { requireAuth } from './middleware.js';
+import { requireAuth, createSession, destroySession } from './middleware.js';
 
 /**
  * Phase 2 — Laravel-backed sessions. No Firebase Auth, no browser tokens.
@@ -44,9 +44,14 @@ async function platformPost(path: string, body: Record<string, unknown>): Promis
   }
 }
 
-function mintSession(res: Response, session: { id: unknown; role: string; name: string; username: string }): void {
+function mintSession(
+  res: Response,
+  session: { id: unknown; role: string; name: string; username: string },
+  platformToken: string,
+): void {
+  const sid = createSession(platformToken, { id: session.id, role: session.role, name: session.name });
   const token = jwt.sign(
-    { id: session.id, uid: session.id, role: session.role, email: session.username, name: session.name },
+    { id: session.id, uid: session.id, role: session.role, email: session.username, name: session.name, sid },
     JWT_SECRET,
     { expiresIn: '24h' },
   );
@@ -96,7 +101,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       role,
       name: asText(user.name) || `${asText(user.first_name)} ${asText(user.last_name)}`.trim(),
       username: asText(user.username) || asText(user.email),
-    });
+    }, asText(payload.access_token));
     res.json({
       success: true,
       user: {
@@ -157,7 +162,7 @@ router.post('/login/parent/verify-otp', async (req: Request, res: Response): Pro
       role: 'parent',
       name: `${asText(user.first_name)} ${asText(user.last_name)}`.trim() || asText(user.phone),
       username: asText(user.email) || asText(user.phone),
-    });
+    }, asText((envelope as Record<string, unknown>).access_token));
     res.json({
       success: true,
       user: {
@@ -178,6 +183,13 @@ router.post('/login/parent/verify-otp', async (req: Request, res: Response): Pro
 });
 
 router.post('/logout', (req: Request, res: Response) => {
+  try {
+    const raw = req.cookies?.token || req.headers.authorization?.split(' ')[1] || '';
+    const decoded = jwt.decode(raw) as { sid?: string } | null;
+    if (decoded && typeof decoded.sid === 'string') destroySession(decoded.sid);
+  } catch {
+    /* best effort — cookie is cleared regardless */
+  }
   res.clearCookie('token');
   res.json({ success: true });
 });

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getMyChildren, getChildScope, type PlatformChild } from '../lib/parentApi';
 import { useStudentStore } from '../stores/studentStore';
 import { useAcademicStore } from '../stores/academicStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -43,6 +44,54 @@ export const ParentPortal: React.FC = () => {
   }, [students, selectedChildId]);
 
   const [selectedChildId, setSelectedChildId] = useState<string | null>(students[0]?.id || null);
+
+  // Platform live data (additive): children + ledger from Laravel, cached 45s server-side.
+  // When unavailable (no session/offline), the Firestore sections below keep working.
+  const [platformChildren, setPlatformChildren] = useState<PlatformChild[] | null>(null);
+  const [platformChildId, setPlatformChildId] = useState<number | null>(null);
+  const [platformLedger, setPlatformLedger] = useState<{
+    total_due?: number; total_outstanding?: number; fees?: Array<{ outstanding?: number }>;
+  } | null>(null);
+  const [platformLoading, setPlatformLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (user?.role !== 'parent') return;
+    let cancelled = false;
+    getMyChildren()
+      .then((kids) => {
+        if (cancelled) return;
+        setPlatformChildren(kids);
+        if (kids.length > 0) setPlatformChildId(kids[0].id);
+      })
+      .catch(() => {
+        if (!cancelled) setPlatformChildren(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  React.useEffect(() => {
+    if (platformChildId == null) {
+      setPlatformLedger(null);
+      return;
+    }
+    let cancelled = false;
+    setPlatformLoading(true);
+    getChildScope(platformChildId, 'ledger')
+      .then((l) => {
+        if (!cancelled) setPlatformLedger(l as NonNullable<typeof platformLedger>);
+      })
+      .catch(() => {
+        if (!cancelled) setPlatformLedger(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPlatformLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [platformChildId]);
   
 
   // Must change password logic
@@ -177,6 +226,71 @@ export const ParentPortal: React.FC = () => {
             <p className="text-xs text-slate-400 mt-1">{isRTL ? 'يرجى مراجعة الإدارة.' : 'Veuillez contacter l\'administration.'}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Live platform data (additive): children from Laravel + authoritative ledger.
+          Firestore sections below remain untouched as fallback. */}
+      {platformChildren && platformChildren.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {platformChildren.map((kid) => {
+              const e = kid.enrollments?.[0];
+              const label = [e?.level, e?.section].filter(Boolean).join(' ') || kid.student_code || '';
+              const active = platformChildId === kid.id;
+              return (
+                <button
+                  key={`platform-${kid.id}`}
+                  onClick={() => setPlatformChildId(kid.id)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-all border-2 ${
+                    active
+                      ? 'border-emerald-500 bg-emerald-50/60 shadow-md shadow-emerald-500/10'
+                      : 'border-transparent bg-white shadow-sm text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
+                    active ? 'bg-emerald-500 text-white shadow-inner' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    {kid.name.charAt(0)}
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className={`font-bold text-sm ${active ? 'text-emerald-700' : 'text-slate-700'}`}>
+                      {kid.name}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400">
+                      {isRTL ? 'قسم: ' : 'Classe: '}{label}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <Card className="rounded-[2rem] border border-emerald-100 shadow-lg shadow-emerald-100/40">
+            <CardContent className="p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/30">
+                <CreditCard className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {isRTL ? 'كشف المنصة المباشر' : 'Relevé plateforme'}
+                </p>
+                {platformLoading ? (
+                  <p className="font-bold text-slate-400 text-sm mt-1">{isRTL ? 'جاري التحميل...' : 'Chargement...'}</p>
+                ) : platformLedger ? (
+                  <p className="font-black text-lg text-slate-900 mt-1">
+                    {(Number(platformLedger.total_outstanding ?? 0) || 0).toFixed(3)} د.ت
+                    <span className="text-xs font-bold text-slate-400">
+                      {' '}{isRTL ? 'متبقي' : 'reste'}
+                      {Array.isArray(platformLedger.fees) ? ` • ${platformLedger.fees.length} ${isRTL ? 'رسوم' : 'frais'}` : ''}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="font-bold text-slate-400 text-sm mt-1">{t('no_data')}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {activeChild && (

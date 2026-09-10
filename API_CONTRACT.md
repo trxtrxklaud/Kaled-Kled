@@ -26,6 +26,20 @@ Envelope: `{success: true, data: ...}` — paginated lists use Laravel paginator
 | `POST /api/auth/logout` | — (local) | clears cookie |
 | `GET /api/auth/me` | — (cookie JWT) | `{success, user}` or 401 |
 
+## 1c. User-scoped session bridge (this server — per-user platform token)
+
+Login mints an httpOnly cookie JWT carrying `sid`; the platform access_token stays in a
+server-side session map (12h TTL, fork×1, restart drops sessions → re-login).
+`GET /api/me/*` forwards with the USER's token (45s per-session cache).
+No cookie / bad signature → 401; unknown/expired sid → 401 `SESSION_EXPIRED`;
+platform 401 → 401 `PLATFORM_SESSION_EXPIRED`; non-GET → 405.
+
+| Call | Forwards to |
+|---|---|
+| `GET /api/me/children`, `/children/:id`, `/children/:id/{ledger,receipts,attendance,grades,timetable,exams,clubs}` | `/api/mobile/parent/...` (platform enforces `authorizeChild` → 403) |
+| `GET /api/me/{announcements,notifications}` | `/api/mobile/parent/...` |
+| `GET /api/me/teacher/sections`, `/teacher/sections/:id/{students,attendance,results,grades}` | `/api/mobile/teacher/...` (platform enforces section scope) |
+
 ## 2. Parent scope (`mobile_role:parent` + `view_own_children`)
 
 Children = students whose `guardian_phone`/`mother_phone` match `users.phone` (last 8 digits),
