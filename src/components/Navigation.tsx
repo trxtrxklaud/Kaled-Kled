@@ -1,20 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, ClipboardCheck, Bell, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy, Database } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardCheck, Bell, UserRound, BookOpen, MessageSquare, DollarSign, FileText, MessageCircle, RefreshCw, FileBadge, Files, School, Trophy, Database, MoreHorizontal, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface NavigationProps {
   isSidebar?: boolean;
 }
 
+interface NavEntry {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
+  label: string;
+  path: string;
+}
+
 const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   const { t, isRTL } = useLanguage();
   const { canAccessFinance, canModifySystem } = useAuth();
-  
-  const navItems = [
+  const auth = useAuth();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const navItems: NavEntry[] = [
     { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
     { icon: Users, label: t('students'), path: '/students' },
     { icon: UserRound, label: t('employees'), path: '/employees' },
@@ -40,7 +48,7 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   }
 
   let filteredNavItems = navItems;
-  if (useAuth().isParent) {
+  if (auth.isParent) {
     filteredNavItems = [
       { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
       { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' }
@@ -87,36 +95,149 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
     );
   }
 
+  // ——— Mobile: max 4 labeled primaries + a "More" bottom sheet (no new routes).
+  // Primary paths are curated from VERIFIED route guards in App.tsx so every
+  // button always lands on an allowed page.
+  const byPath = new Map(filteredNavItems.map((i) => [i.path, i]));
+  const pick = (path: string): NavEntry | null => byPath.get(path) || null;
+  let primary: NavEntry[] = [];
+  if (auth.isParent) {
+    primary = [
+      byPath.get('/')!,
+      { icon: Users, label: isRTL ? 'فضائي' : 'Enfants', path: '/parent' },
+      byPath.get('/homework')!,
+      byPath.get('/notifications')!,
+    ];
+  } else if (auth.isTeacher) {
+    primary = [
+      byPath.get('/')!,
+      byPath.get('/students')!,
+      byPath.get('/homework')!,
+      byPath.get('/communication')!,
+    ];
+  } else {
+    primary = [
+      byPath.get('/')!,
+      byPath.get('/students')!,
+      ...(canAccessFinance
+        ? [{ icon: DollarSign, label: t('finance'), path: '/finance' } as NavEntry]
+        : [byPath.get('/communication')!]),
+      ...(auth.isAdmin
+        ? [{ icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' } as NavEntry]
+        : [byPath.get('/homework')!]),
+    ];
+  }
+  const primaryPaths = new Set(primary.map((p) => p.path));
+  const rest = filteredNavItems.filter((i) => !primaryPaths.has(i.path));
+
+  const renderItem = (item: NavEntry, onNavigate?: () => void) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      onClick={onNavigate}
+      className="flex flex-col items-center justify-center min-w-[64px] min-h-[56px] px-2 rounded-2xl transition-transform active:scale-95"
+      aria-label={item.label}
+    >
+      {({ isActive }) => (
+        <>
+          <span className={cn(
+            "flex items-center justify-center w-11 h-8 rounded-full transition-colors",
+            isActive ? "bg-primary text-white shadow-md shadow-primary/30" : "text-slate-500"
+          )}>
+            <item.icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
+          </span>
+          <span className={cn(
+            "text-[10px] mt-1 leading-none",
+            isActive ? "font-black text-primary" : "font-semibold text-slate-500"
+          )}>
+            {item.label}
+          </span>
+        </>
+      )}
+    </NavLink>
+  );
+
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 safe-area-bottom w-[95%] max-w-md print:hidden lg:hidden">
-      <nav className="bg-[#1e1b4b]/95 backdrop-blur-xl rounded-full px-4 py-3 shadow-[0_20px_40px_-5px_rgba(30,27,75,0.4)] flex justify-around items-center border border-white/10 no-scrollbar overflow-x-auto">
-        {filteredNavItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className="flex flex-col items-center justify-center relative transition-transform active:scale-95"
+    <>
+      <div className="fixed bottom-0 inset-x-0 z-50 lg:hidden print:hidden">
+        <nav
+          aria-label={isRTL ? 'التنقل الرئيسي' : 'Navigation principale'}
+          className="mx-3 mb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white/95 backdrop-blur-xl rounded-3xl px-2 py-2 shadow-xl border border-slate-200/80 flex justify-around items-stretch"
+        >
+          {primary.map((item) => renderItem(item))}
+          {rest.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              aria-label={isRTL ? 'المزيد' : 'Plus'}
+              className="flex flex-col items-center justify-center min-w-[64px] min-h-[56px] px-2 rounded-2xl transition-transform active:scale-95"
+            >
+              <span className="flex items-center justify-center w-11 h-8 rounded-full text-slate-500">
+                <MoreHorizontal className="w-5 h-5" strokeWidth={2} />
+              </span>
+              <span className="text-[10px] mt-1 leading-none font-semibold text-slate-500">
+                {isRTL ? 'المزيد' : 'Plus'}
+              </span>
+            </button>
+          )}
+        </nav>
+      </div>
+
+      <AnimatePresence>
+        {moreOpen && (
+          <motion.div
+            className="fixed inset-0 z-[70] lg:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label={isRTL ? 'المزيد' : 'Plus'}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
           >
-            {({ isActive }) => (
-              <div className={cn(
-                "flex items-center justify-center transition-all duration-300 rounded-full p-2.5",
-                isActive ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
-              )}>
-                <item.icon 
-                  className={cn("w-6 h-6", isActive ? "text-accent drop-shadow-[0_0_8px_rgba(251,191,36,0.5)] fill-accent/20" : "")} 
-                  strokeWidth={isActive ? 2.5 : 2} 
-                />
-                {isActive && (
-                  <motion.div 
-                    layoutId="nav-pill" 
-                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-accent rounded-full shadow-[0_0_8px_rgba(251,191,36,0.8)]" 
-                  />
-                )}
+            <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+            <motion.div
+              className="absolute bottom-0 inset-x-0 bg-white rounded-t-3xl shadow-2xl max-h-[70vh] flex flex-col"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'tween', duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                <h2 className="font-black text-slate-900">
+                  {isRTL ? 'كل الأقسام' : 'Toutes les rubriques'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(false)}
+                  aria-label={isRTL ? 'إغلاق' : 'Fermer'}
+                  className="p-2.5 -m-1 rounded-full text-slate-500 hover:bg-slate-100 active:scale-95"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
+              <div className="overflow-y-auto px-3 pb-6">
+                {rest.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMoreOpen(false)}
+                    className={({ isActive }) => cn(
+                      "flex items-center gap-3 px-4 py-3.5 rounded-2xl min-h-[56px] transition-colors",
+                      isActive ? "bg-primary/10 text-primary font-black" : "text-slate-700 font-semibold hover:bg-slate-50"
+                    )}
+                  >
+                    <item.icon className="w-5 h-5 shrink-0" strokeWidth={2} />
+                    <span className="text-sm flex-1">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 

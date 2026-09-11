@@ -310,3 +310,22 @@ input[type=number]::-webkit-outer-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+
+/* Mobile app foundation: real safe-areas, calm touch feedback, no iOS zoom */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  overscroll-behavior-y: contain;
+}
+@media (max-width: 767px) {
+  /* iOS auto-zooms any field under 16px — unify to prevent screen jumps */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

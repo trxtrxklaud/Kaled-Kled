@@ -5,11 +5,13 @@ import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from 'sonner';
+import SplashScreen from './components/SplashScreen';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <LanguageProvider>
       <AuthProvider>
+        <SplashScreen />
         <App />
         <Toaster position="top-center" richColors closeButton />
       </AuthProvider>

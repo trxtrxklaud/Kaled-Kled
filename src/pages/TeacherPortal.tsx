@@ -17,6 +17,7 @@ import {
   CalendarCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ListSkeleton } from '../components/Skeletons';
 import { getTeacherSections, getTeacherRoster, getTeacherDayAttendance, postTeacherScope } from '../lib/parentApi';
 
 export const TeacherPortal: React.FC = () => {
@@ -641,9 +642,7 @@ export const TeacherPortal: React.FC = () => {
               )}
 
               {platLoading ? (
-                <p className="text-center text-slate-400 text-sm font-bold py-8">
-                  {isRTL ? 'جاري التحميل من المنصة...' : 'Chargement...'}
-                </p>
+                <ListSkeleton rows={5} />
               ) : (
                 <div className="space-y-3">
                   {platRoster.map((st) => {

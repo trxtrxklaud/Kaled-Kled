@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getMyChildren, getChildScope, getChildStatement, arabicMonthLabel, type PlatformChild, type FeeStatement } from '../lib/parentApi';
 import { getAvatarUrl } from '../lib/utils';
+import { ListSkeleton } from '../components/Skeletons';
 import { useStudentStore } from '../stores/studentStore';
 import { useAcademicStore } from '../stores/academicStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -454,7 +455,7 @@ export const ParentPortal: React.FC = () => {
             </CardHeader>
             <CardContent className="p-4">
               {platformLoading ? (
-                <p className="text-center text-slate-400 text-xs font-bold py-4">{isRTL ? 'جاري التحميل...' : 'Chargement...'}</p>
+                <ListSkeleton rows={5} />
               ) : platformStatement && Array.isArray(platformStatement.fees) && platformStatement.fees.length > 0 ? (
                 (() => {
                   const fees = platformStatement.fees as NonNullable<FeeStatement['fees']>;
