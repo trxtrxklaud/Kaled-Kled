@@ -18,18 +18,21 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { 
-  Users, 
-  Calendar, 
-  BookOpen, 
-  Trophy, 
-  Clock, 
-  AlertCircle, 
-  Bell, 
+import {
+  Users,
+  Calendar,
+  BookOpen,
+  Trophy,
+  Clock,
+  AlertCircle,
+  Bell,
   CreditCard,
   Send,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
+import { EmptyState, ErrorState } from '../components/States';
 
 export const ParentPortal: React.FC = () => {
   const { user } = useAuth();
@@ -65,6 +68,8 @@ export const ParentPortal: React.FC = () => {
   // When unavailable (no session/offline), the Firestore sections below keep working.
   const [platformChildren, setPlatformChildren] = useState<PlatformChild[] | null>(null);
   const [platformChildId, setPlatformChildId] = useState<number | null>(null);
+  const [platformError, setPlatformError] = useState('');
+  const [platformRetry, setPlatformRetry] = useState(0);
   // Authoritative per-fee statement (arrears included). The parent ledger endpoint
   // only lists PAID months, so it can never show what is owed.
   const [platformStatement, setPlatformStatement] = useState<FeeStatement | null>(null);
@@ -80,19 +85,27 @@ export const ParentPortal: React.FC = () => {
   React.useEffect(() => {
     if (user?.role !== 'parent') return;
     let cancelled = false;
+    setPlatformError('');
     getMyChildren()
       .then((kids) => {
         if (cancelled) return;
         setPlatformChildren(kids);
         if (kids.length > 0) setPlatformChildId(kids[0].id);
       })
-      .catch(() => {
-        if (!cancelled) setPlatformChildren(null);
+      .catch((e) => {
+        if (cancelled) return;
+        setPlatformChildren(null);
+        const status = (e as { status?: number })?.status;
+        setPlatformError(
+          status === 401
+            ? (isRTL ? 'انتهت الجلسة — سجل الدخول مجدداً.' : 'Session expirée, reconnectez-vous.')
+            : ((e as Error)?.message || (isRTL ? 'تعذر تحميل الأبناء.' : 'Échec de chargement.')),
+        );
       });
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, platformRetry, isRTL]);
 
   React.useEffect(() => {
     if (platformChildId == null) {
@@ -377,24 +390,24 @@ export const ParentPortal: React.FC = () => {
       {!identityLive && (students.length > 0 ? (
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {students.map((student) => (
-            <button
-              key={student.id}
-              onClick={() => setSelectedChildId(student.id)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-all border-2 ${
-                selectedChildId === student.id 
-                  ? 'border-primary bg-primary/5 shadow-md shadow-primary/10' 
-                  : 'border-transparent bg-white shadow-sm text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
-                selectedChildId === student.id ? 'bg-primary text-white shadow-inner' : 'bg-slate-100 text-slate-400'
-              }`}>
-                {student.fullName.charAt(0)}
-              </div>
-              <div className="flex flex-col items-start">
-                <span className={`font-bold text-sm ${selectedChildId === student.id ? 'text-primary' : 'text-slate-700'}`}>
-                  {student.fullName}
-                </span>
+              <button
+                key={student.id}
+                onClick={() => setSelectedChildId(student.id)}
+                className={`flex items-center gap-3 px-4 py-4 rounded-2xl whitespace-nowrap transition-all border-2 min-h-[72px] ${
+                  selectedChildId === student.id
+                    ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                    : 'border-transparent bg-white shadow-sm text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                  selectedChildId === student.id ? 'bg-primary text-white shadow-inner' : 'bg-slate-100 text-slate-400'
+                }`}>
+                  {student.fullName.charAt(0)}
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className={`font-bold text-base ${selectedChildId === student.id ? 'text-primary' : 'text-slate-700'}`}>
+                    {student.fullName}
+                  </span>
                 <span className="text-xs font-semibold text-slate-400">
                   {isRTL ? 'قسم: ' : 'Classe: '}{student.class}
                 </span>
@@ -412,38 +425,44 @@ export const ParentPortal: React.FC = () => {
         </Card>
       ))}
 
-      {/* Live platform data (additive): children from Laravel + authoritative ledger.
-          Firestore sections below remain untouched as fallback. */}
+      {/* Live platform data: children from Laravel (big tappable cards). */}
+      {platformError !== '' && (!platformChildren || platformChildren.length === 0) && (
+        <ErrorState message={platformError} onRetry={() => setPlatformRetry((r) => r + 1)} />
+      )}
       {platformChildren && platformChildren.length > 0 && (
         <div className="space-y-4">
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          <div className="space-y-3">
             {platformChildren.map((kid) => {
               const e = kid.enrollments?.[0];
               const label = [e?.level, e?.section].filter(Boolean).join(' ') || kid.student_code || '';
               const active = platformChildId === kid.id;
+              const Chevron = isRTL ? ChevronLeft : ChevronRight;
               return (
                 <button
                   key={`platform-${kid.id}`}
+                  type="button"
                   onClick={() => setPlatformChildId(kid.id)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-all border-2 ${
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-right transition-all active:scale-[0.99] min-h-[76px] ${
                     active
-                      ? 'border-emerald-500 bg-emerald-50/60 shadow-md shadow-emerald-500/10'
-                      : 'border-transparent bg-white shadow-sm text-slate-500 hover:bg-slate-50'
+                      ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                      : 'border-slate-100 bg-white shadow-sm hover:bg-slate-50'
                   }`}
                 >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
-                    active ? 'bg-emerald-500 text-white shadow-inner' : 'bg-slate-100 text-slate-400'
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shrink-0 ${
+                    active ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     {kid.name.charAt(0)}
                   </div>
-                  <div className="flex flex-col items-start">
-                    <span className={`font-bold text-sm ${active ? 'text-emerald-700' : 'text-slate-700'}`}>
-                      {kid.name}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-400">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-slate-900 truncate">{kid.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 truncate">
                       {isRTL ? 'قسم: ' : 'Classe: '}{label}
-                    </span>
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {isRTL ? 'رقم التسجيل: ' : 'Code: '}{kid.student_code || '—'}
+                    </p>
                   </div>
+                  <Chevron className="w-5 h-5 text-slate-300 shrink-0" />
                 </button>
               );
             })}

@@ -60,7 +60,7 @@ const Layout: React.FC = () => {
   }
 
   return (
-    <div className={`flex h-screen bg-transparent overflow-hidden ${isRTL ? 'font-arabic flex-row-reverse' : ''}`}>
+    <div className={`flex h-[100dvh] bg-transparent overflow-hidden ${isRTL ? 'font-arabic flex-row-reverse' : ''}`}>
       {/* Desktop Sidebar (Hidden on mobile) */}
       <aside className="sidebar hidden lg:flex flex-col z-50 print:hidden relative transition-layout">
         <div className="p-6 flex items-center gap-4">
@@ -107,7 +107,7 @@ const Layout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative bg-transparent">
+      <div className="flex-1 flex flex-col h-[100dvh] overflow-hidden relative bg-transparent">
         
         {/* Soft atmospheric background inside main pane */}
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden hidden lg:block">
