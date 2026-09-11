@@ -27,23 +27,35 @@ async function forward(
   req: SessionRequest,
   res: Response,
   platformPath: string,
+  opts: { method?: string; body?: unknown; query?: Record<string, string> } = {},
 ): Promise<void> {
   const entry = req.sessionEntry;
   if (!entry) {
     res.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Session expired, please log in again.' });
     return;
   }
-  const key = `${req.sessionId}:${platformPath}`;
-  const hit = cache.get(key);
-  if (hit && hit.exp > Date.now()) {
-    res.status(hit.status).json(hit.body);
-    return;
+  const method = opts.method || 'GET';
+  const url = new URL(BASE + platformPath);
+  for (const [k, v] of Object.entries(opts.query || {})) url.searchParams.set(k, v);
+  // Reads are cached per session; writes never are.
+  if (method === 'GET') {
+    const hit = cache.get(`${req.sessionId}:${url.pathname}${url.search}`);
+    if (hit && hit.exp > Date.now()) {
+      res.status(hit.status).json(hit.body);
+      return;
+    }
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const upstream = await fetch(BASE + platformPath, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${entry.platformToken}` },
+    const upstream = await fetch(url.toString(), {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${entry.platformToken}`,
+      },
+      body: method === 'GET' ? undefined : JSON.stringify(opts.body ?? {}),
       signal: ctrl.signal,
     });
     const body: unknown = await upstream.json().catch(() => null);
@@ -51,8 +63,8 @@ async function forward(
       res.status(401).json({ success: false, code: 'PLATFORM_SESSION_EXPIRED', message: 'Platform session expired, please log in again.' });
       return;
     }
-    if (upstream.status === 200) {
-      cache.set(key, { exp: Date.now() + CACHE_TTL_MS, status: 200, body });
+    if (method === 'GET' && upstream.status === 200) {
+      cache.set(`${req.sessionId}:${url.pathname}${url.search}`, { exp: Date.now() + CACHE_TTL_MS, status: 200, body });
       if (cache.size > 500) {
         const oldest = cache.keys().next();
         if (!oldest.done) cache.delete(oldest.value);
@@ -65,6 +77,15 @@ async function forward(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function pickQuery(req: Request, allowed: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of allowed) {
+    const v = (req.query as Record<string, unknown>)[key];
+    if (typeof v === 'string' && v.trim() !== '') out[key] = v.trim();
+  }
+  return out;
 }
 
 const CHILD_SCOPES = ['ledger', 'receipts', 'attendance', 'grades', 'timetable', 'exams', 'clubs'];
@@ -109,7 +130,27 @@ router.get('/teacher/sections/:id/:scope', requireSession, async (req: SessionRe
     res.status(400).json({ success: false, message: 'Invalid section request.' });
     return;
   }
-  await forward(req, res, `/api/mobile/teacher/sections/${req.params.id}/${req.params.scope}`);
+  await forward(req, res, `/api/mobile/teacher/sections/${req.params.id}/${req.params.scope}`, {
+    query: req.params.scope === 'attendance' ? pickQuery(req, ['date']) : {},
+  });
+});
+
+// ——— Teacher writes (academic only — never financial; platform re-checks scope+perms) ———
+const TEACHER_WRITE_SCOPES = ['attendance', 'results', 'grades'];
+
+router.post('/teacher/sections/:id/:scope', requireSession, async (req: SessionRequest, res: Response) => {
+  if (!digits(req.params.id) || !TEACHER_WRITE_SCOPES.includes(req.params.scope)) {
+    res.status(400).json({ success: false, message: 'Invalid section write request.' });
+    return;
+  }
+  if (!req.body || typeof req.body !== 'object') {
+    res.status(400).json({ success: false, message: 'JSON body required.' });
+    return;
+  }
+  await forward(req, res, `/api/mobile/teacher/sections/${req.params.id}/${req.params.scope}`, {
+    method: 'POST',
+    body: req.body,
+  });
 });
 
 // ——— Anything else: rejected locally ———

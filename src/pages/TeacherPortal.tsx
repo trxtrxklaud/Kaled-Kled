@@ -11,11 +11,13 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
-import { 
-  Users, BookOpen, Trophy, 
-  MessageCircle, CheckCircle2, XCircle, Clock, Send, Check, AlertCircle, Upload, FileText
+import {
+  Users, BookOpen, Trophy,
+  MessageCircle, CheckCircle2, XCircle, Clock, Send, Check, AlertCircle, Upload, FileText,
+  CalendarCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getTeacherSections, getTeacherRoster, getTeacherDayAttendance, postTeacherScope } from '../lib/parentApi';
 
 export const TeacherPortal: React.FC = () => {
   const { user } = useAuth();
@@ -23,7 +25,96 @@ export const TeacherPortal: React.FC = () => {
   const { isRTL } = useLanguage();
   
   const [selectedClass, setSelectedClass] = useState<string | null>(assignedClasses[0] || null);
-  const [activeTab, setActiveTab] = useState<'attendance' | 'grades' | 'homework' | 'note'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'grades' | 'homework' | 'note' | 'platform'>('attendance');
+
+  // Platform roll-call (additive): real sections + roster from Laravel, writes go to
+  // the platform via the user-scoped proxy. Firestore flow above stays untouched.
+  const [platSections, setPlatSections] = useState<Array<{ id: number; name: string; level?: string; students_count?: number }> | null>(null);
+  const [platSectionId, setPlatSectionId] = useState<number | null>(null);
+  const [platRoster, setPlatRoster] = useState<Array<{ enrollment_id: number; student_id: number; name: string; student_code?: string }>>([]);
+  const [platMarks, setPlatMarks] = useState<Record<number, 'present' | 'absent' | 'late' | 'excused'>>({});
+  const [platDate, setPlatDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [platLoading, setPlatLoading] = useState(false);
+  const [platSaving, setPlatSaving] = useState(false);
+  const [platError, setPlatError] = useState('');
+
+  useEffect(() => {
+    if (activeTab !== 'platform' || platSections !== null) return;
+    let cancelled = false;
+    setPlatLoading(true);
+    setPlatError('');
+    getTeacherSections()
+      .then((s) => {
+        if (cancelled) return;
+        const arr = Array.isArray(s) ? s : [];
+        setPlatSections(arr);
+        if (arr.length > 0) setPlatSectionId(arr[0].id);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setPlatSections([]);
+          setPlatError((e as Error)?.message || 'تعذر تحميل أقسام المنصة');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPlatLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, platSections]);
+
+  useEffect(() => {
+    if (activeTab !== 'platform' || platSectionId == null) return;
+    let cancelled = false;
+    setPlatLoading(true);
+    Promise.all([getTeacherRoster(platSectionId), getTeacherDayAttendance(platSectionId, platDate)])
+      .then(([roster, day]) => {
+        if (cancelled) return;
+        const list = Array.isArray(roster) ? roster : [];
+        setPlatRoster(list);
+        const prefill: Record<number, 'present' | 'absent' | 'late' | 'excused'> = {};
+        const recs = (day as { records?: Array<{ enrollment_id: number; status: string }> })?.records;
+        if (Array.isArray(recs)) {
+          for (const r of recs) {
+            if (['present', 'absent', 'late', 'excused'].includes(r.status)) {
+              prefill[r.enrollment_id] = r.status as 'present' | 'absent' | 'late' | 'excused';
+            }
+          }
+        }
+        setPlatMarks(prefill);
+      })
+      .catch(() => {
+        if (!cancelled) setPlatRoster([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPlatLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, platSectionId, platDate]);
+
+  const handleSavePlatformAttendance = async () => {
+    if (platSectionId == null) return;
+    const entries = Object.entries(platMarks).map(([enrollment_id, status]) => ({
+      enrollment_id: Number(enrollment_id),
+      status,
+    }));
+    if (entries.length === 0) {
+      toast.error(isRTL ? 'حدد حالة تلميذ واحد على الأقل' : 'Marquez au moins un élève');
+      return;
+    }
+    setPlatSaving(true);
+    try {
+      await postTeacherScope(platSectionId, 'attendance', { date: platDate, entries });
+      toast.success(isRTL ? `تم حفظ نداء المنصة (${entries.length})` : `Appel enregistré (${entries.length})`);
+    } catch (e) {
+      toast.error((e as Error)?.message || (isRTL ? 'تعذر الحفظ' : 'Échec'));
+    } finally {
+      setPlatSaving(false);
+    }
+  };
 
   const students = useStudentStore(state => state.students).filter(s => s.class === selectedClass);
   const recordAttendance = useStudentStore(state => state.recordAttendance);
@@ -250,6 +341,7 @@ export const TeacherPortal: React.FC = () => {
     { id: 'homework', label: isRTL ? 'الواجبات' : 'Devoirs', icon: <BookOpen className="w-4 h-4"/> },
     { id: 'grades', label: isRTL ? 'الأعداد' : 'Notes', icon: <Trophy className="w-4 h-4"/> },
     { id: 'note', label: isRTL ? 'ملاحظة' : 'Message', icon: <MessageCircle className="w-4 h-4"/> },
+    { id: 'platform', label: isRTL ? 'نداء المنصة' : 'Appel plateforme', icon: <CalendarCheck className="w-4 h-4"/> },
   ] as const;
 
   if (assignedClasses.length === 0) {
@@ -501,6 +593,99 @@ export const TeacherPortal: React.FC = () => {
 
               <Button onClick={handleSaveGrades} disabled={!gradeSubject || !gradeExam} className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest mt-6 shadow-lg shadow-indigo-600/20">
                 <Check className="w-5 h-5 mr-2" /> {isRTL ? 'حفظ الأعداد' : 'Enregistrer les notes'}
+              </Button>
+            </div>
+          )}
+
+          {/* PLATFORM ROLL-CALL TAB (writes to Laravel, reads authoritative roster) */}
+          {activeTab === 'platform' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">
+                  {isRTL ? 'نداء المنصة' : 'Appel plateforme'}
+                </h3>
+                <input
+                  type="date"
+                  value={platDate}
+                  onChange={(e) => setPlatDate(e.target.value)}
+                  className="h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-700"
+                />
+              </div>
+
+              {platError !== '' && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold leading-relaxed">
+                  {platError}
+                  <span className="block mt-1 text-rose-500">
+                    {isRTL ? 'سجل الدخول عبر المنصة (هاتف/هاتف) لا Firebase.' : 'Connectez-vous via la plateforme.'}
+                  </span>
+                </div>
+              )}
+
+              {platSections !== null && platSections.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  {platSections.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setPlatSectionId(s.id)}
+                      className={`px-4 py-2.5 rounded-2xl whitespace-nowrap text-xs font-black border-2 transition-all ${
+                        platSectionId === s.id
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100'
+                          : 'border-transparent bg-white shadow-sm text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {s.level ? `${s.level} ${s.name}` : s.name}
+                      {typeof s.students_count === 'number' ? ` (${s.students_count})` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {platLoading ? (
+                <p className="text-center text-slate-400 text-sm font-bold py-8">
+                  {isRTL ? 'جاري التحميل من المنصة...' : 'Chargement...'}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {platRoster.map((st) => {
+                    const status = platMarks[st.enrollment_id] || 'present';
+                    const btn = (key: 'present' | 'absent' | 'late' | 'excused', label: string, on: string) => (
+                      <button
+                        key={key}
+                        onClick={() => setPlatMarks((prev) => ({ ...prev, [st.enrollment_id]: key }))}
+                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                          status === key ? on : 'bg-white text-slate-400 border border-slate-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                    return (
+                      <div key={st.enrollment_id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                        <span className="font-bold text-slate-800 text-sm">
+                          {st.name}
+                          {st.student_code ? <span className="text-xs text-slate-400 font-semibold"> • {st.student_code}</span> : null}
+                        </span>
+                        <div className="flex gap-2">
+                          {btn('present', isRTL ? 'حاضر' : 'Pr', 'bg-emerald-100 text-emerald-700 shadow-inner')}
+                          {btn('late', isRTL ? 'متأخر' : 'Ret', 'bg-amber-100 text-amber-700 shadow-inner')}
+                          {btn('absent', isRTL ? 'غائب' : 'Abs', 'bg-rose-100 text-rose-700 shadow-inner')}
+                          {btn('excused', isRTL ? 'بعذر' : 'Exc', 'bg-purple-100 text-purple-700 shadow-inner')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <Button
+                onClick={handleSavePlatformAttendance}
+                disabled={platSaving || platSectionId == null}
+                className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest mt-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+              >
+                <Check className="w-5 h-5 mr-2" />
+                {platSaving
+                  ? (isRTL ? 'جاري الحفظ...' : 'Enregistrement...')
+                  : (isRTL ? 'حفظ نداء المنصة' : 'Enregistrer')}
               </Button>
             </div>
           )}

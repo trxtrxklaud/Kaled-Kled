@@ -63,6 +63,13 @@ export const ParentPortal: React.FC = () => {
     total_due?: number; total_outstanding?: number; fees?: Array<{ outstanding?: number }>;
   } | null>(null);
   const [platformLoading, setPlatformLoading] = useState(false);
+  // Extra live sections (platform-only data, defensive shapes — hidden when absent)
+  const [platformExtras, setPlatformExtras] = useState<{
+    receipts: Array<{ amount?: number; cancelled_at?: string | null; payment_date?: string; method?: string }>;
+    timetable: any;
+    clubs: Array<{ id?: number; club_name?: string; name?: string; fee?: number }>;
+    exams: Array<{ id?: number; title?: string; type?: string; date?: string }>;
+  }>({ receipts: [], timetable: null, clubs: [], exams: [] });
 
   React.useEffect(() => {
     if (user?.role !== 'parent') return;
@@ -84,16 +91,39 @@ export const ParentPortal: React.FC = () => {
   React.useEffect(() => {
     if (platformChildId == null) {
       setPlatformLedger(null);
+      setPlatformExtras({ receipts: [], timetable: null, clubs: [], exams: [] });
       return;
     }
     let cancelled = false;
     setPlatformLoading(true);
-    getChildScope(platformChildId, 'ledger')
-      .then((l) => {
-        if (!cancelled) setPlatformLedger(l as NonNullable<typeof platformLedger>);
+    Promise.allSettled([
+      getChildScope(platformChildId, 'ledger'),
+      getChildScope(platformChildId, 'receipts'),
+      getChildScope(platformChildId, 'timetable'),
+      getChildScope(platformChildId, 'clubs'),
+      getChildScope(platformChildId, 'exams'),
+    ])
+      .then(([ledger, receipts, timetable, clubs, exams]) => {
+        if (cancelled) return;
+        if (ledger.status === 'fulfilled') {
+          setPlatformLedger(ledger.value as NonNullable<typeof platformLedger>);
+        } else {
+          setPlatformLedger(null);
+        }
+        const arr = (r: PromiseSettledResult<unknown>) =>
+          r.status === 'fulfilled' && Array.isArray(r.value) ? (r.value as any[]) : [];
+        setPlatformExtras({
+          receipts: arr(receipts) as NonNullable<typeof platformExtras>['receipts'],
+          timetable: timetable.status === 'fulfilled' ? timetable.value : null,
+          clubs: arr(clubs) as NonNullable<typeof platformExtras>['clubs'],
+          exams: arr(exams) as NonNullable<typeof platformExtras>['exams'],
+        });
       })
       .catch(() => {
-        if (!cancelled) setPlatformLedger(null);
+        if (!cancelled) {
+          setPlatformLedger(null);
+          setPlatformExtras({ receipts: [], timetable: null, clubs: [], exams: [] });
+        }
       })
       .finally(() => {
         if (!cancelled) setPlatformLoading(false);
@@ -323,6 +353,135 @@ export const ParentPortal: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Receipts — platform payment history (authoritative) */}
+          <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
+              <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                <CreditCard className="w-4 h-4 mr-2 text-emerald-500" /> {isRTL ? 'وصولات الدفع' : 'Reçus'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              {platformLoading ? (
+                <p className="text-center text-slate-400 text-xs font-bold py-4">{isRTL ? 'جاري التحميل...' : 'Chargement...'}</p>
+              ) : platformExtras.receipts.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-black text-slate-500">
+                    {isRTL ? 'المجموع المدفوع: ' : 'Total payé : '}
+                    <span className="text-emerald-600 text-sm">
+                      {platformExtras.receipts
+                        .filter((r) => !r.cancelled_at)
+                        .reduce((s, r) => s + (Number(r.amount) || 0), 0)
+                        .toFixed(3)} د.ت
+                    </span>
+                  </p>
+                  {platformExtras.receipts.slice(0, 8).map((r, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                      <span className="text-sm font-bold text-slate-800">
+                        {(Number(r.amount) || 0).toFixed(3)} د.ت
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {r.payment_date ? <span className="text-xs text-slate-400 font-semibold">{String(r.payment_date).slice(0, 10)}</span> : null}
+                        {r.cancelled_at
+                          ? <Badge variant="destructive" className="text-[9px] font-black">{isRTL ? 'ملغى' : 'Annulé'}</Badge>
+                          : <Badge className="bg-emerald-100 text-emerald-700 text-[9px] font-black">{isRTL ? 'خالص' : 'Payé'}</Badge>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-4 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">{t('no_data')}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Weekly timetable (platform static grid or schedule list) */}
+          {(() => {
+            const tt = platformExtras.timetable as any;
+            const schedule = Array.isArray(tt?.schedule) ? tt.schedule : null;
+            const days = Array.isArray(tt?.days) ? tt.days : null;
+            if (!schedule && !days) return null;
+            return (
+              <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
+                  <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                    <Calendar className="w-4 h-4 mr-2 text-sky-500" /> {isRTL ? 'جدول الحصص' : 'Emploi'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  {schedule ? (
+                    <div className="space-y-3">
+                      {schedule.map((d: any, i: number) => (
+                        <div key={i}>
+                          <p className="text-xs font-black text-slate-500 mb-1">{String(d.day ?? '')}</p>
+                          <div className="space-y-1.5">
+                            {(Array.isArray(d.sessions) ? d.sessions : []).map((s: any, j: number) => (
+                              <div key={j} className="flex items-center justify-between p-2.5 bg-sky-50/60 rounded-xl border border-sky-100/60 text-xs">
+                                <span className="font-bold text-slate-800">{String(s.subject ?? '')}</span>
+                                <span className="text-slate-500 font-semibold">{String(s.time ?? '')}{s.room ? ` • ${String(s.room)}` : ''}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {days.map((d: string, i: number) => (
+                        <div key={i} className="p-2.5 bg-sky-50/60 rounded-xl border border-sky-100/60 text-xs font-bold text-slate-700">
+                          {String(d)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* Clubs */}
+          {platformExtras.clubs.length > 0 && (
+            <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
+                <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                  <Users className="w-4 h-4 mr-2 text-violet-500" /> {isRTL ? 'النوادي' : 'Clubs'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="flex flex-wrap gap-2">
+                  {platformExtras.clubs.map((c, i) => (
+                    <span key={c.id ?? i} className="px-3 py-1.5 rounded-full bg-violet-50 border border-violet-100 text-violet-800 text-xs font-bold">
+                      {String(c.club_name || c.name || '')}
+                      {Number(c.fee || 0) > 0 ? ` • ${Number(c.fee).toFixed(0)} د.ت` : ''}
+                    </span>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Exams */}
+          {platformExtras.exams.length > 0 && (
+            <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
+                <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                  <Trophy className="w-4 h-4 mr-2 text-amber-500" /> {isRTL ? 'الامتحانات' : 'Examens'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  {platformExtras.exams.slice(0, 8).map((e, i) => (
+                    <div key={e.id ?? i} className="flex items-center justify-between p-3 bg-amber-50/60 rounded-2xl border border-amber-100/60">
+                      <span className="text-sm font-bold text-slate-800">{String(e.title || '')}</span>
+                      <span className="text-xs text-slate-500 font-semibold">
+                        {e.type ? `${String(e.type)} • ` : ''}{e.date ? String(e.date).slice(0, 10) : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

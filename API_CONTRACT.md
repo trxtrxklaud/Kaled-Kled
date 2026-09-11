@@ -40,6 +40,10 @@ platform 401 → 401 `PLATFORM_SESSION_EXPIRED`; non-GET → 405.
 | `GET /api/me/{announcements,notifications}` | `/api/mobile/parent/...` |
 | `GET /api/me/teacher/sections`, `/teacher/sections/:id/{students,attendance,results,grades}` | `/api/mobile/teacher/...` (platform enforces section scope) |
 
+Teacher writes (academic only — JSON body forwarded as-is, never cached):
+`POST /api/me/teacher/sections/:id/{attendance,results,grades}` matching the platform
+shapes (`{date?, entries:[{enrollment_id, status|score, ...}]}`). Any other non-GET → 405.
+
 ## 2. Parent scope (`mobile_role:parent` + `view_own_children`)
 
 Children = students whose `guardian_phone`/`mother_phone` match `users.phone` (last 8 digits),

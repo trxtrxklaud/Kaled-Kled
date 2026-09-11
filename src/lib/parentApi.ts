@@ -42,3 +42,28 @@ export const getChildScope = (id: number, scope: ChildScope): Promise<unknown> =
 export const getMyAnnouncements = (): Promise<unknown> => me<unknown>('/announcements');
 
 export const getTeacherSections = (): Promise<unknown> => me<unknown>('/teacher/sections');
+
+export const getTeacherRoster = (sectionId: number): Promise<unknown> =>
+  me<unknown>(`/teacher/sections/${sectionId}/students`);
+
+export const getTeacherDayAttendance = (sectionId: number, date: string): Promise<unknown> =>
+  me<unknown>(`/teacher/sections/${sectionId}/attendance?date=${encodeURIComponent(date)}`);
+
+export type TeacherWriteScope = 'attendance' | 'results' | 'grades';
+
+export async function postTeacherScope(sectionId: number, scope: TeacherWriteScope, body: unknown): Promise<any> {
+  const res = await fetch(`/api/me/teacher/sections/${sectionId}/${scope}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(
+      (data as { message?: string })?.message || `Request failed (${res.status})`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
