@@ -57,6 +57,10 @@ export const ParentPortal: React.FC = () => {
   const [noteBody, setNoteBody] = useState('');
   const [noteSending, setNoteSending] = useState(false);
 
+  // Expandable cards (world-class drill-down without new routes): one open at a time.
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggleExpanded = (key: string) => setExpanded((e) => (e === key ? null : key));
+
   // Platform live data (additive): children + ledger from Laravel, cached 45s server-side.
   // When unavailable (no session/offline), the Firestore sections below keep working.
   const [platformChildren, setPlatformChildren] = useState<PlatformChild[] | null>(null);
@@ -223,10 +227,12 @@ export const ParentPortal: React.FC = () => {
   })();
   const homeworkClass = identityLive && platformClassLabel !== '' ? platformClassLabel : (activeChild?.class || '');
   const childHomeworks = homeworks.filter(hw => hw.classes?.includes(homeworkClass) || hw.classes?.includes('Tous'))
-    .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()).slice(0, 5);
+    .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
     
   const childResults = academicResults.filter(r => r.studentId === activeChild?.id)
-    .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()).slice(0, 5);
+    .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
+
+  const visibleAnns = announcements.filter(a => a.priority === 'urgent' || a.priority === 'normal');
 
   const childArrears = financeArrears.filter(f => f.studentId === activeChild?.id && f.status === 'pending');
 
@@ -511,8 +517,17 @@ export const ParentPortal: React.FC = () => {
           <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
-                <CreditCard className="w-4 h-4 mr-2 text-emerald-500" /> {isRTL ? 'وصولات الدفع' : 'Reçus'}
-              </CardTitle>
+                  <CreditCard className="w-4 h-4 mr-2 text-emerald-500" /> {isRTL ? 'وصولات الدفع' : 'Reçus'}
+                </CardTitle>
+                {platformExtras.receipts.length > 8 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded('receipts')}
+                    className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+                  >
+                    {expanded === 'receipts' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+                  </button>
+                )}
             </CardHeader>
             <CardContent className="p-4">
               {platformLoading ? (
@@ -528,7 +543,7 @@ export const ParentPortal: React.FC = () => {
                         .toFixed(3)} د.ت
                     </span>
                   </p>
-                  {platformExtras.receipts.slice(0, 8).map((r, i) => (
+                  {platformExtras.receipts.slice(0, expanded === 'receipts' ? undefined : 8).map((r, i) => (
                     <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
                       <span className="text-sm font-bold text-slate-800">
                         {(Number(r.amount) || 0).toFixed(3)} د.ت
@@ -598,10 +613,19 @@ export const ParentPortal: React.FC = () => {
                 <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                   <Trophy className="w-4 h-4 mr-2 text-amber-500" /> {isRTL ? 'الامتحانات' : 'Examens'}
                 </CardTitle>
+                {platformExtras.exams.length > 8 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded('exams')}
+                    className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+                  >
+                    {expanded === 'exams' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+                  </button>
+                )}
               </CardHeader>
               <CardContent className="p-4">
                 <div className="space-y-2">
-                  {platformExtras.exams.slice(0, 8).map((e, i) => (
+                  {platformExtras.exams.slice(0, expanded === 'exams' ? undefined : 8).map((e, i) => (
                     <div key={e.id ?? i} className="flex items-center justify-between p-3 bg-amber-50/60 rounded-2xl border border-amber-100/60">
                       <span className="text-sm font-bold text-slate-800">{String(e.title || '')}</span>
                       <span className="text-xs text-slate-500 font-semibold">
@@ -678,13 +702,22 @@ export const ParentPortal: React.FC = () => {
           <Card id="pp-results" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
-                <Trophy className="w-4 h-4 mr-2 text-primary" /> {isRTL ? 'آخر الأعداد' : 'Dernières Notes'}
-              </CardTitle>
+                  <Trophy className="w-4 h-4 mr-2 text-primary" /> {isRTL ? 'آخر الأعداد' : 'Dernières Notes'}
+                </CardTitle>
+                {childResults.length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded('results')}
+                    className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+                  >
+                    {expanded === 'results' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+                  </button>
+                )}
             </CardHeader>
             <CardContent className="p-4">
               {childResults.length > 0 ? (
                 <div className="space-y-3">
-                  {childResults.map(res => (
+                  {childResults.slice(0, expanded === 'results' ? undefined : 5).map(res => (
                     <div key={res.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-2xl">
                       <div>
                         <p className="text-sm font-bold text-slate-900">{res.subject}</p>
@@ -709,13 +742,22 @@ export const ParentPortal: React.FC = () => {
           <Card id="pp-homework" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
-                <BookOpen className="w-4 h-4 mr-2 text-indigo-500" /> {isRTL ? 'الواجبات المنزلية' : 'Devoirs'}
-              </CardTitle>
+                  <BookOpen className="w-4 h-4 mr-2 text-indigo-500" /> {isRTL ? 'الواجبات المنزلية' : 'Devoirs'}
+                </CardTitle>
+                {childHomeworks.length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded('homework')}
+                    className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+                  >
+                    {expanded === 'homework' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+                  </button>
+                )}
             </CardHeader>
             <CardContent className="p-4">
               {childHomeworks.length > 0 ? (
                 <div className="space-y-3">
-                  {childHomeworks.map(hw => (
+                  {childHomeworks.slice(0, expanded === 'homework' ? undefined : 5).map(hw => (
                     <div key={hw.id} className="flex flex-col p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
                       <div className="flex justify-between items-start mb-1">
                         <p className="text-sm font-bold text-indigo-900">{hw.title}</p>
@@ -743,13 +785,22 @@ export const ParentPortal: React.FC = () => {
           <Card id="pp-attendance" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
-                <Calendar className="w-4 h-4 mr-2 text-rose-500" /> {isRTL ? 'سجل الغيابات' : 'Historique des Absences'}
-              </CardTitle>
+                  <Calendar className="w-4 h-4 mr-2 text-rose-500" /> {isRTL ? 'سجل الغيابات' : 'Historique des Absences'}
+                </CardTitle>
+                {childAttendance.filter(a => !a.present).length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded('absences')}
+                    className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+                  >
+                    {expanded === 'absences' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+                  </button>
+                )}
             </CardHeader>
             <CardContent className="p-4">
               {childAttendance.filter(a => !a.present).length > 0 ? (
                 <div className="space-y-2">
-                  {childAttendance.filter(a => !a.present).slice(0, 5).map(att => (
+                  {childAttendance.filter(a => !a.present).slice(0, expanded === 'absences' ? undefined : 5).map(att => (
                     <div key={att.id} className="flex items-center gap-3 p-3 bg-rose-50/50 rounded-2xl border border-rose-100/50">
                       <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                         <AlertCircle className="w-4 h-4" />
@@ -829,11 +880,22 @@ export const ParentPortal: React.FC = () => {
 
       {/* Global Announcements */}
       <div id="pp-announcements" className="mt-8 scroll-mt-24">
-        <h2 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4 px-2">
-          {isRTL ? 'بلاغات المدرسة' : 'Annonces de l\'école'}
-        </h2>
+        <div className="flex items-center justify-between mb-4 px-2">
+          <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">
+            {isRTL ? 'بلاغات المدرسة' : 'Annonces de l\'école'}
+          </h2>
+          {visibleAnns.length > 3 && (
+            <button
+              type="button"
+              onClick={() => toggleExpanded('annc')}
+              className="text-[10px] font-black text-primary hover:underline px-2 py-2 min-h-[44px] shrink-0"
+            >
+              {expanded === 'annc' ? (isRTL ? 'إخفاء' : 'Masquer') : (isRTL ? 'عرض الكل' : 'Tout voir')}
+            </button>
+          )}
+        </div>
         <div className="space-y-4">
-          {announcements.filter(a => a.priority === 'urgent' || a.priority === 'normal').slice(0,3).map(ann => (
+          {visibleAnns.slice(0, expanded === 'annc' ? undefined : 3).map(ann => (
             <Card key={ann.id} className={`rounded-[2rem] border-none shadow-sm overflow-hidden ${ann.priority === 'urgent' ? 'bg-rose-50 border-l-4 border-l-rose-500' : 'bg-white border border-slate-100'}`}>
               <CardContent className="p-5 flex flex-col sm:flex-row gap-4">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${ann.priority === 'urgent' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
