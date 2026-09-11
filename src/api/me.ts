@@ -93,7 +93,7 @@ const TEACHER_SECTIONS = ['students', 'attendance', 'results', 'grades'];
 
 // ——— Parent reads ———
 router.get('/children', requireSession, async (req: SessionRequest, res: Response) => {
-  await forward(req, res, '/api/mobile/parent/children');
+  await forward(req, res, '/mobile/parent/children');
 });
 
 router.get('/children/:id', requireSession, async (req: SessionRequest, res: Response) => {
@@ -113,16 +113,16 @@ router.get('/children/:id/:scope', requireSession, async (req: SessionRequest, r
 });
 
 router.get('/announcements', requireSession, async (req: SessionRequest, res: Response) => {
-  await forward(req, res, '/api/mobile/parent/announcements');
+  await forward(req, res, '/mobile/parent/announcements');
 });
 
 router.get('/notifications', requireSession, async (req: SessionRequest, res: Response) => {
-  await forward(req, res, '/api/mobile/parent/notifications');
+  await forward(req, res, '/mobile/parent/notifications');
 });
 
 // ——— Teacher reads (UI wiring later; platform enforces section scope) ———
 router.get('/teacher/sections', requireSession, async (req: SessionRequest, res: Response) => {
-  await forward(req, res, '/api/mobile/teacher/sections');
+  await forward(req, res, '/mobile/teacher/sections');
 });
 
 router.get('/teacher/sections/:id/:scope', requireSession, async (req: SessionRequest, res: Response) => {
