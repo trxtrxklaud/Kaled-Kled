@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getMyChildren, getChildScope, type PlatformChild } from '../lib/parentApi';
+import { getMyChildren, getChildScope, getChildStatement, arabicMonthLabel, type PlatformChild, type FeeStatement } from '../lib/parentApi';
 import { useStudentStore } from '../stores/studentStore';
 import { useAcademicStore } from '../stores/academicStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -59,9 +59,9 @@ export const ParentPortal: React.FC = () => {
   // When unavailable (no session/offline), the Firestore sections below keep working.
   const [platformChildren, setPlatformChildren] = useState<PlatformChild[] | null>(null);
   const [platformChildId, setPlatformChildId] = useState<number | null>(null);
-  const [platformLedger, setPlatformLedger] = useState<{
-    total_due?: number; total_outstanding?: number; fees?: Array<{ outstanding?: number }>;
-  } | null>(null);
+  // Authoritative per-fee statement (arrears included). The parent ledger endpoint
+  // only lists PAID months, so it can never show what is owed.
+  const [platformStatement, setPlatformStatement] = useState<FeeStatement | null>(null);
   const [platformLoading, setPlatformLoading] = useState(false);
   // Extra live sections (platform-only data, defensive shapes — hidden when absent)
   const [platformExtras, setPlatformExtras] = useState<{
@@ -90,25 +90,26 @@ export const ParentPortal: React.FC = () => {
 
   React.useEffect(() => {
     if (platformChildId == null) {
-      setPlatformLedger(null);
+      setPlatformStatement(null);
       setPlatformExtras({ receipts: [], timetable: null, clubs: [], exams: [] });
       return;
     }
     let cancelled = false;
     setPlatformLoading(true);
     Promise.allSettled([
-      getChildScope(platformChildId, 'ledger'),
+      getChildStatement(platformChildId),
       getChildScope(platformChildId, 'receipts'),
       getChildScope(platformChildId, 'timetable'),
       getChildScope(platformChildId, 'clubs'),
       getChildScope(platformChildId, 'exams'),
     ])
-      .then(([ledger, receipts, timetable, clubs, exams]) => {
+      .then(([statement, receipts, timetable, clubs, exams]) => {
         if (cancelled) return;
-        if (ledger.status === 'fulfilled') {
-          setPlatformLedger(ledger.value as NonNullable<typeof platformLedger>);
+        if (statement.status === 'fulfilled') {
+          const s = (statement.value as { statement?: FeeStatement }).statement;
+          setPlatformStatement(s && typeof s === 'object' ? s : null);
         } else {
-          setPlatformLedger(null);
+          setPlatformStatement(null);
         }
         const arr = (r: PromiseSettledResult<unknown>) =>
           r.status === 'fulfilled' && Array.isArray(r.value) ? (r.value as any[]) : [];
@@ -121,7 +122,7 @@ export const ParentPortal: React.FC = () => {
       })
       .catch(() => {
         if (!cancelled) {
-          setPlatformLedger(null);
+          setPlatformStatement(null);
           setPlatformExtras({ receipts: [], timetable: null, clubs: [], exams: [] });
         }
       })
@@ -133,6 +134,10 @@ export const ParentPortal: React.FC = () => {
     };
   }, [platformChildId]);
   
+
+  // Platform identity drives the portal when live — Firestore selectors hide to
+  // avoid showing two contradictory child lists on one screen.
+  const identityLive = platformChildren !== null && platformChildren.length > 0;
 
   // Must change password logic
   const [newPassword, setNewPassword] = useState('');
@@ -207,7 +212,15 @@ export const ParentPortal: React.FC = () => {
   const childAttendance = attendance.filter(a => a.studentId === activeChild?.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const todayAttendance = childAttendance.find(a => a.date.startsWith(new Date().toISOString().split('T')[0]));
   
-  const childHomeworks = homeworks.filter(hw => hw.classes?.includes(activeChild?.class || '') || hw.classes?.includes('Tous'))
+  // When platform identity is live, match homeworks by the platform class label
+  // ("level section") instead of the Firestore child's class.
+  const platformClassLabel = (() => {
+    const k = (platformChildren || []).find((c) => c.id === platformChildId);
+    const e = k?.enrollments?.[0];
+    return [e?.level, e?.section].filter(Boolean).join(' ');
+  })();
+  const homeworkClass = identityLive && platformClassLabel !== '' ? platformClassLabel : (activeChild?.class || '');
+  const childHomeworks = homeworks.filter(hw => hw.classes?.includes(homeworkClass) || hw.classes?.includes('Tous'))
     .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()).slice(0, 5);
     
   const childResults = academicResults.filter(r => r.studentId === activeChild?.id)
@@ -252,8 +265,9 @@ export const ParentPortal: React.FC = () => {
         </p>
       </div>
 
-      {/* Children Selector */}
-      {students.length > 0 ? (
+      {/* Children Selector (Firestore fallback — hidden when platform identity is live,
+          so the screen never shows two contradictory child lists) */}
+      {!identityLive && (students.length > 0 ? (
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {students.map((student) => (
             <button
@@ -289,7 +303,7 @@ export const ParentPortal: React.FC = () => {
             <p className="text-xs text-slate-400 mt-1">{isRTL ? 'يرجى مراجعة الإدارة.' : 'Veuillez contacter l\'administration.'}</p>
           </CardContent>
         </Card>
-      )}
+      ))}
 
       {/* Live platform data (additive): children from Laravel + authoritative ledger.
           Firestore sections below remain untouched as fallback. */}
@@ -329,28 +343,66 @@ export const ParentPortal: React.FC = () => {
           </div>
 
           <Card className="rounded-[2rem] border border-emerald-100 shadow-lg shadow-emerald-100/40">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/30">
-                <CreditCard className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  {isRTL ? 'كشف المنصة المباشر' : 'Relevé plateforme'}
-                </p>
-                {platformLoading ? (
-                  <p className="font-bold text-slate-400 text-sm mt-1">{isRTL ? 'جاري التحميل...' : 'Chargement...'}</p>
-                ) : platformLedger ? (
-                  <p className="font-black text-lg text-slate-900 mt-1">
-                    {(Number(platformLedger.total_outstanding ?? 0) || 0).toFixed(3)} د.ت
-                    <span className="text-xs font-bold text-slate-400">
-                      {' '}{isRTL ? 'متبقي' : 'reste'}
-                      {Array.isArray(platformLedger.fees) ? ` • ${platformLedger.fees.length} ${isRTL ? 'رسوم' : 'frais'}` : ''}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="font-bold text-slate-400 text-sm mt-1">{t('no_data')}</p>
-                )}
-              </div>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-emerald-50">
+              <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                <CreditCard className="w-4 h-4 mr-2 text-emerald-500" /> {isRTL ? 'كشف الأقساط' : 'Relevé'}
+              </CardTitle>
+              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {isRTL ? 'مباشر' : 'Live'}
+              </span>
+            </CardHeader>
+            <CardContent className="p-4">
+              {platformLoading ? (
+                <p className="text-center text-slate-400 text-xs font-bold py-4">{isRTL ? 'جاري التحميل...' : 'Chargement...'}</p>
+              ) : platformStatement && Array.isArray(platformStatement.fees) && platformStatement.fees.length > 0 ? (
+                (() => {
+                  const fees = platformStatement.fees as NonNullable<FeeStatement['fees']>;
+                  const sumDue = fees.reduce((s, f) => s + (Number(f.amount_due) || 0), 0);
+                  const sumOut = fees.reduce((s, f) => s + (Number(f.outstanding) || 0), 0);
+                  const showDue = Number(platformStatement.total_due);
+                  const showOut = Number(platformStatement.total_outstanding);
+                  const due = Number.isFinite(showDue) ? showDue : sumDue;
+                  const out = Number.isFinite(showOut) ? showOut : sumOut;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50/70 border border-emerald-100 mb-3">
+                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                          {isRTL ? 'المتبقي بذمتكم' : 'Reste dû'}
+                        </span>
+                        <span className={`font-black text-lg ${out > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {out.toFixed(3)} د.ت
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {fees.map((f, i) => {
+                          const o = Number(f.outstanding) || 0;
+                          const paid = o <= 0;
+                          const label = String(f.description || f.fee_type || arabicMonthLabel(f.due_date, ''));
+                          return (
+                            <div key={f.id ?? i} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{label}</p>
+                                <p className="text-xs text-slate-400 font-semibold">
+                                  {isRTL ? 'المستحق: ' : 'Dû : '}{(Number(f.amount_due) || 0).toFixed(3)} د.ت
+                                </p>
+                              </div>
+                              {paid
+                                ? <Badge className="bg-emerald-100 text-emerald-700 text-[9px] font-black shrink-0">{isRTL ? 'خالص' : 'Payé'}</Badge>
+                                : <Badge variant="destructive" className="text-[9px] font-black shrink-0">{o.toFixed(3)} د.ت</Badge>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-3">
+                        {isRTL ? `المجموع: ${due.toFixed(3)} د.ت` : `Total : ${due.toFixed(3)} DT`}
+                      </p>
+                    </>
+                  );
+                })()
+              ) : (
+                <p className="py-4 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">{t('no_data')}</p>
+              )}
             </CardContent>
           </Card>
 
@@ -395,52 +447,25 @@ export const ParentPortal: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Weekly timetable (platform static grid or schedule list) */}
-          {(() => {
-            const tt = platformExtras.timetable as any;
-            const schedule = Array.isArray(tt?.schedule) ? tt.schedule : null;
-            const days = Array.isArray(tt?.days) ? tt.days : null;
-            if (!schedule && !days) return null;
-            return (
-              <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
-                <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
-                  <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
-                    <Calendar className="w-4 h-4 mr-2 text-sky-500" /> {isRTL ? 'جدول الحصص' : 'Emploi'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  {schedule ? (
-                    <div className="space-y-3">
-                      {schedule.map((d: any, i: number) => (
-                        <div key={i}>
-                          <p className="text-xs font-black text-slate-500 mb-1">{String(d.day ?? '')}</p>
-                          <div className="space-y-1.5">
-                            {(Array.isArray(d.sessions) ? d.sessions : []).map((s: any, j: number) => (
-                              <div key={j} className="flex items-center justify-between p-2.5 bg-sky-50/60 rounded-xl border border-sky-100/60 text-xs">
-                                <span className="font-bold text-slate-800">{String(s.subject ?? '')}</span>
-                                <span className="text-slate-500 font-semibold">{String(s.time ?? '')}{s.room ? ` • ${String(s.room)}` : ''}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {days.map((d: string, i: number) => (
-                        <div key={i} className="p-2.5 bg-sky-50/60 rounded-xl border border-sky-100/60 text-xs font-bold text-slate-700">
-                          {String(d)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })()}
+          {/* Weekly timetable — the platform currently serves a STATIC placeholder grid
+              (same for every section), so showing it as fact would mislead parents.
+              Honest placeholder until administration publishes real timetables. */}
+          <Card className="rounded-[2rem] border border-dashed border-2 border-slate-200 bg-slate-50/50">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-100">
+              <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
+                <Calendar className="w-4 h-4 mr-2 text-sky-500" /> {isRTL ? 'جدول الحصص' : 'Emploi'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <p className="py-4 text-center text-slate-400 text-xs font-bold leading-relaxed">
+                {isRTL
+                  ? 'جدول الحصص الحقيقي سيظهر هنا فور نشره من إدارة المدرسة.'
+                  : 'L\'emploi réel paraîtra ici dès sa publication.'}
+              </p>
+            </CardContent>
+          </Card>
 
-          {/* Clubs */}
-          {platformExtras.clubs.length > 0 && (
+          {/* Clubs (always shown when platform is live — empty state instead of hiding) */}
             <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
               <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
                 <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
@@ -448,6 +473,7 @@ export const ParentPortal: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4">
+                {platformExtras.clubs.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {platformExtras.clubs.map((c, i) => (
                     <span key={c.id ?? i} className="px-3 py-1.5 rounded-full bg-violet-50 border border-violet-100 text-violet-800 text-xs font-bold">
@@ -456,9 +482,13 @@ export const ParentPortal: React.FC = () => {
                     </span>
                   ))}
                 </div>
+                ) : (
+                <p className="py-4 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+                  {isRTL ? 'التلميذ غير مسجل في أي نادٍ' : 'Aucun club'}
+                </p>
+                )}
               </CardContent>
             </Card>
-          )}
 
           {/* Exams */}
           {platformExtras.exams.length > 0 && (

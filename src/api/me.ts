@@ -23,6 +23,22 @@ const cache = new Map<string, CacheRow>();
 
 const digits = (v: string): boolean => /^\d+$/.test(v);
 
+const SERVICE_TOKEN = process.env.PROVIDENCE_API_TOKEN || '';
+
+async function fetchJson(url: string, token: string): Promise<{ status: number; body: unknown }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function forward(
   req: SessionRequest,
   res: Response,
@@ -109,7 +125,45 @@ router.get('/children/:id/:scope', requireSession, async (req: SessionRequest, r
     res.status(400).json({ success: false, message: 'Invalid child request.' });
     return;
   }
-  await forward(req, res, `/api/mobile/parent/children/${req.params.id}/${req.params.scope}`);
+  await forward(req, res, `/mobile/parent/children/${req.params.id}/${req.params.scope}`);
+});
+
+// ——— Authoritative fee statement: membership checked with the USER's token,
+// then the per-fee ledger read with the SERVICE token (phase-1 proxy).
+// The parent ledger endpoint only lists PAID months, so it can never show arrears.
+router.get('/children/:id/statement', requireSession, async (req: SessionRequest, res: Response) => {
+  if (!digits(req.params.id)) {
+    res.status(400).json({ success: false, message: 'Invalid child id.' });
+    return;
+  }
+  const entry = req.sessionEntry;
+  if (!entry) {
+    res.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Session expired, please log in again.' });
+    return;
+  }
+  try {
+    const kids = await fetchJson(`${BASE}/api/mobile/parent/children`, entry.platformToken);
+    const list = Array.isArray(kids.body)
+      ? kids.body
+      : [];
+    if (!list.some((k: any) => k && String(k.id) === req.params.id)) {
+      res.status(403).json({ success: false, message: 'Not authorized for this child.' });
+      return;
+    }
+    if (!SERVICE_TOKEN) {
+      res.status(503).json({ success: false, code: 'SERVICE_NOT_CONFIGURED', message: 'Service token missing on server.' });
+      return;
+    }
+    const admin = await fetchJson(`${BASE}/api/mobile/admin/students/${req.params.id}/ledger`, SERVICE_TOKEN);
+    if (admin.status !== 200) {
+      res.status(admin.status).json(admin.body ?? { success: false });
+      return;
+    }
+    res.json({ success: true, source: 'providence', statement: admin.body });
+  } catch (err: unknown) {
+    console.error('Statement proxy error:', (err as Error)?.message || err);
+    res.status(502).json({ success: false, code: 'PROVIDENCE_UNREACHABLE' });
+  }
 });
 
 router.get('/announcements', requireSession, async (req: SessionRequest, res: Response) => {

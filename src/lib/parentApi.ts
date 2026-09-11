@@ -36,6 +36,30 @@ export const getMyChildren = (): Promise<PlatformChild[]> => me<PlatformChild[]>
 
 export const getChildDetail = (id: number): Promise<unknown> => me<unknown>(`/children/${id}`);
 
+export interface FeeStatementRow {
+  id?: number;
+  description?: string;
+  fee_type?: string;
+  amount_due?: number | string;
+  outstanding?: number | string;
+  due_date?: string | null;
+  status?: string;
+}
+
+export interface FeeStatement {
+  student?: { id?: number; first_name?: string; last_name?: string; student_code?: string };
+  section?: { id?: number; name?: string } | null;
+  fees?: FeeStatementRow[];
+  total_due?: number | string;
+  total_outstanding?: number | string;
+}
+
+/** Authoritative per-fee statement (arrears included). Server enforces child scope. */
+export const getChildStatement = (id: number): Promise<{ success: boolean; statement: FeeStatement }> =>
+  me<{ success: boolean; statement: FeeStatement }>(`/children/${id}/statement`);
+
+export { arabicMonthLabel } from './providenceMappers';
+
 export const getChildScope = (id: number, scope: ChildScope): Promise<unknown> =>
   me<unknown>(`/children/${id}/${scope}`);
 
