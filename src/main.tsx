@@ -6,12 +6,14 @@ import { AuthProvider } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from 'sonner';
 import SplashScreen from './components/SplashScreen';
+import DiagOverlay from './components/DiagOverlay';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <LanguageProvider>
       <AuthProvider>
         <SplashScreen />
+        <DiagOverlay />
         <App />
         <Toaster position="top-center" richColors closeButton />
       </AuthProvider>
