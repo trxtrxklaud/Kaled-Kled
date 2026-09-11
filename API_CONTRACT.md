@@ -24,6 +24,10 @@ Envelope: `{success: true, data: ...}` — paginated lists use Laravel paginator
 | `POST /api/auth/login/parent/request-otp` `{phone}` | platform `request-otp` | platform message passthrough |
 | `POST /api/auth/login/parent/verify-otp` `{phone, code}` | platform `verify-otp` | httpOnly session cookie + `{success, user(role:parent)}` |
 | `POST /api/auth/logout` | — (local) | clears cookie |
+
+NOTE: `dev_code` (manual channel) is stripped by the bridge and never sent to the
+browser — its presence would oracle registered phones. The cashier hands the code over
+in person; the browser only receives the uniform message.
 | `GET /api/auth/me` | — (cookie JWT) | `{success, user}` or 401 |
 
 ## 1c. User-scoped session bridge (this server — per-user platform token)

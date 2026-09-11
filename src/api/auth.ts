@@ -130,7 +130,14 @@ router.post('/login/parent/request-otp', async (req: Request, res: Response): Pr
   }
   try {
     const { status, data } = await platformPost('/mobile/parent/request-otp', { phone });
-    res.status(status).json((data ?? { success: false }) as object);
+    const envelope = (data ?? {}) as { message?: string };
+    // SECURITY: never forward dev_code (manual channel). Its presence would let
+    // anyone oracle which phones are registered. The cashier hands the code over
+    // in person; the browser only gets the uniform message.
+    res.status(status).json({
+      success: status === 200,
+      message: asText(envelope.message) || 'OTP request processed.',
+    });
   } catch (err: unknown) {
     console.error('Parent OTP request proxy error:', (err as Error)?.message || err);
     res.status(502).json({ success: false, message: 'Cannot reach the platform.' });
