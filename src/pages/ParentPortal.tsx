@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getMyChildren, getChildScope, getChildStatement, arabicMonthLabel, type PlatformChild, type FeeStatement } from '../lib/parentApi';
+import { getAvatarUrl } from '../lib/utils';
 import { useStudentStore } from '../stores/studentStore';
 import { useAcademicStore } from '../stores/academicStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -230,6 +231,31 @@ export const ParentPortal: React.FC = () => {
 
   const unreadNotifs = notifications.filter(n => !n.isRead).length;
 
+  // Real-data derivations for the pro header (no placeholders — every number below
+  // comes from the platform statement or the local stores).
+  const platformKid = platformChildren && platformChildren.length > 0
+    ? (platformChildren.find((k) => k.id === platformChildId) || platformChildren[0])
+    : null;
+  const kidName = platformKid?.name || activeChild?.fullName || '';
+  const kidClass = (() => {
+    const e = platformKid?.enrollments?.[0];
+    const l = [e?.level, e?.section].filter(Boolean).join(' ');
+    return l || activeChild?.class || '';
+  })();
+  const stmtOut = (() => {
+    const v = Number(platformStatement?.total_outstanding);
+    if (Number.isFinite(v)) return v;
+    const rows = Array.isArray(platformStatement?.fees) ? platformStatement.fees : [];
+    return rows.reduce((s, f) => s + (Number((f as { outstanding?: unknown }).outstanding) || 0), 0);
+  })();
+  const firestoreOut = childArrears.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const heroOut = platformStatement ? stmtOut : firestoreOut;
+  const absentCount = childAttendance.filter((a) => !a.present).length;
+  const weekdayAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'][new Date().getDay()];
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   // Parent → school notes: written to the EXISTING messages inbox
   // (staff reads it in Communication). No new collection, no new page.
   const handleSendNote = async (e: React.FormEvent) => {
@@ -255,14 +281,88 @@ export const ParentPortal: React.FC = () => {
 
   return (
     <div className={`space-y-6 pb-24 ${isRTL ? 'text-right' : 'text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Header & Welcome */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          {isRTL ? 'مرحباً،' : 'Bienvenue,'} {user?.name}
-        </h1>
-        <p className="text-sm text-slate-500 font-medium">
-          {isRTL ? 'تابع مسار أبنائك الدراسي لحظة بلحظة.' : 'Suivez le parcours de vos enfants en temps réel.'}
-        </p>
+      {/* Pro mobile header: avatar + greeting + notifications bell */}
+      <div className="bg-white px-5 py-4 rounded-3xl shadow-sm border border-slate-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
+            <img
+              src={getAvatarUrl(user?.name || '?', 'employee')}
+              alt=""
+              className="w-12 h-12 rounded-full ring-2 ring-primary/60 object-cover"
+            />
+            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
+              {isRTL ? 'فضاء الولي' : 'Espace parent'}
+            </span>
+            <h2 className="text-base font-black text-slate-800 truncate">
+              {isRTL ? 'مرحباً،' : 'Bienvenue,'} {user?.name}
+            </h2>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => scrollTo('pp-announcements')}
+          aria-label={isRTL ? 'الإشعارات' : 'Notifications'}
+          className="relative p-2.5 rounded-full bg-slate-100 text-slate-600 active:scale-90 shrink-0"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadNotifs > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full" />
+          )}
+        </button>
+      </div>
+
+      {/* Followed child card (real data only — never placeholders) */}
+      {kidName !== '' && (
+        <div className="bg-gradient-to-l from-blue-600 to-indigo-700 rounded-2xl p-4 text-white shadow-lg shadow-blue-500/20">
+          <div className="flex justify-between items-start gap-3">
+            <div className="min-w-0">
+              <p className="text-blue-100 text-[11px] font-medium">
+                {isRTL ? 'الملف الدراسي المتابع' : 'Dossier suivi'}
+              </p>
+              <h3 className="text-lg font-black mt-0.5 truncate">{kidName}</h3>
+              <p className="text-xs text-blue-200 mt-1">{kidClass}</p>
+            </div>
+            <span className="bg-white/20 px-2.5 py-1 rounded-full text-xs font-bold border border-white/10 shrink-0">
+              {heroOut > 0 ? `${heroOut.toFixed(0)} د.ت` : (isRTL ? 'خالص' : 'Réglé')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Quick services grid (real counts, smooth-scroll to sections) */}
+      <div>
+        <h3 className="text-sm font-bold text-slate-700 mb-3">
+          {isRTL ? 'الخدمات المدرسية' : 'Services scolaires'}
+        </h3>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { key: 'tt', title: isRTL ? 'جدول الحصص' : 'Emploi', icon: Calendar, cls: 'bg-blue-50 text-blue-600', sub: weekdayAr, go: 'pp-timetable' },
+            { key: 'gr', title: isRTL ? 'الأعداد' : 'Notes', icon: Trophy, cls: 'bg-amber-50 text-amber-600', sub: childResults.length > 0 ? `${childResults.length}` : '—', go: 'pp-results' },
+            { key: 'at', title: isRTL ? 'الغياب' : 'Absences', icon: Clock, cls: 'bg-emerald-50 text-emerald-600', sub: absentCount === 0 ? (isRTL ? '0 غياب' : '0 absence') : `${absentCount}`, go: 'pp-attendance' },
+            { key: 'fe', title: isRTL ? 'المستحقات' : 'Frais', icon: CreditCard, cls: 'bg-purple-50 text-purple-600', sub: heroOut > 0 ? `${heroOut.toFixed(0)} د.ت` : (isRTL ? 'خالص' : 'Réglé'), go: identityLive ? 'pp-fees' : 'pp-overview' },
+            { key: 'ms', title: isRTL ? 'المراسلات' : 'Messages', icon: Bell, cls: 'bg-rose-50 text-rose-600', sub: unreadNotifs > 0 ? (isRTL ? `${unreadNotifs} جديدة` : `${unreadNotifs}`) : (isRTL ? 'لا جديد' : 'Rien'), go: 'pp-announcements' },
+            { key: 'hw', title: isRTL ? 'الواجبات' : 'Devoirs', icon: BookOpen, cls: 'bg-indigo-50 text-indigo-600', sub: `${childHomeworks.length}`, go: 'pp-homework' },
+          ].map((a) => {
+            const Icon = a.icon;
+            return (
+              <button
+                key={a.key}
+                type="button"
+                onClick={() => scrollTo(a.go)}
+                className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center text-center active:scale-95 transition-transform min-h-[44px]"
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${a.cls} mb-2`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">{a.title}</span>
+                <span className="text-[10px] text-slate-400 mt-0.5">{a.sub}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Children Selector (Firestore fallback — hidden when platform identity is live,
@@ -342,7 +442,7 @@ export const ParentPortal: React.FC = () => {
             })}
           </div>
 
-          <Card className="rounded-[2rem] border border-emerald-100 shadow-lg shadow-emerald-100/40">
+          <Card id="pp-fees" className="rounded-[2rem] border border-emerald-100 shadow-lg shadow-emerald-100/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-emerald-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                 <CreditCard className="w-4 h-4 mr-2 text-emerald-500" /> {isRTL ? 'كشف الأقساط' : 'Relevé'}
@@ -450,7 +550,7 @@ export const ParentPortal: React.FC = () => {
           {/* Weekly timetable — the platform currently serves a STATIC placeholder grid
               (same for every section), so showing it as fact would mislead parents.
               Honest placeholder until administration publishes real timetables. */}
-          <Card className="rounded-[2rem] border border-dashed border-2 border-slate-200 bg-slate-50/50">
+          <Card id="pp-timetable" className="rounded-[2rem] border border-dashed border-2 border-slate-200 bg-slate-50/50 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-100">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                 <Calendar className="w-4 h-4 mr-2 text-sky-500" /> {isRTL ? 'جدول الحصص' : 'Emploi'}
@@ -516,7 +616,7 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {activeChild && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div id="pp-overview" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 scroll-mt-24">
           
           {/* Quick Stats - Today */}
           <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -574,7 +674,7 @@ export const ParentPortal: React.FC = () => {
           </div>
 
           {/* Academic Results */}
-          <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+          <Card id="pp-results" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                 <Trophy className="w-4 h-4 mr-2 text-primary" /> {isRTL ? 'آخر الأعداد' : 'Dernières Notes'}
@@ -605,7 +705,7 @@ export const ParentPortal: React.FC = () => {
           </Card>
 
           {/* Homeworks */}
-          <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+          <Card id="pp-homework" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                 <BookOpen className="w-4 h-4 mr-2 text-indigo-500" /> {isRTL ? 'الواجبات المنزلية' : 'Devoirs'}
@@ -639,7 +739,7 @@ export const ParentPortal: React.FC = () => {
           </Card>
 
           {/* Recent Absences */}
-          <Card className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40">
+          <Card id="pp-attendance" className="rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 scroll-mt-24">
             <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-slate-50">
               <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center">
                 <Calendar className="w-4 h-4 mr-2 text-rose-500" /> {isRTL ? 'سجل الغيابات' : 'Historique des Absences'}
@@ -680,7 +780,7 @@ export const ParentPortal: React.FC = () => {
 
       {/* Contact the school — visible to parents only */}
       {user?.role === 'parent' && (
-      <div className="mt-8">
+      <div id="pp-notes" className="mt-8 scroll-mt-24">
         <h2 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4 px-2">
           {isRTL ? 'مراسلة المدرسة' : 'Contacter l\'école'}
         </h2>
@@ -727,7 +827,7 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {/* Global Announcements */}
-      <div className="mt-8">
+      <div id="pp-announcements" className="mt-8 scroll-mt-24">
         <h2 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4 px-2">
           {isRTL ? 'بلاغات المدرسة' : 'Annonces de l\'école'}
         </h2>
