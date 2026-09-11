@@ -127,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const requestParentOtp = async (phone: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      const data = await postJson('/api/auth/parent/request-otp', { phone });
+      const data = await postJson('/api/auth/login/parent/request-otp', { phone });
       return { success: true, message: data.message || 'OTP sent' };
     } catch (error: any) {
       return { success: false, message: error?.message || 'OTP request failed' };
@@ -136,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyParentOtp = async (phone: string, code: string): Promise<{ success: boolean; role?: string; message?: string }> => {
     try {
-      const data = await postJson('/api/auth/parent/verify-otp', { phone, code });
+      const data = await postJson('/api/auth/login/parent/verify-otp', { phone, code });
       const u = data.user;
       const childrenIds = await findChildrenByPhone(phone);
       const newUser: User = {

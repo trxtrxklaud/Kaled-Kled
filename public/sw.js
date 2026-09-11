@@ -2,7 +2,7 @@
  * البيانات على الجهاز (LocalStorage/IndexedDB) فالتخزين المؤقت للهيكل آمن.
  * طلبات الشبكة (Firebase/البريد) تمر مباشرة دون تخزين. لا اعتراض لغير GET.
  */
-const VERSION = 'kled-pwa-v1';
+const VERSION = 'kled-pwa-v2';
 const STATIC_CACHE = VERSION + '-static';
 const PAGES_CACHE = VERSION + '-pages';
 
@@ -41,7 +41,19 @@ self.addEventListener('fetch', (event) => {
     url.hostname.indexOf('emailjs') !== -1
   ) return;
 
-  // التنقل: الشبكة أولاً ثم الهيكل المخزن (يعمل دون اتصال).
+  // الـ API أبداً لا يُخزَّن: بيانات مالية وجلسات — تخزينها يعني أرقاماً قديمة
+  // وتسرب بيانات بين مستخدمي الجهاز نفسه. الشبكة فقط دائماً.
+  if (url.pathname.indexOf('/api/') === 0) return;
+
+  const offlinePage = () => new Response(
+    '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>العناية</title></head><body style="font-family:sans-serif;text-align:center;padding:40px">'
+    + '<h1>لا يوجد اتصال</h1><p>تحقق من الإنترنت ثم أعد المحاولة.</p></body></html>',
+    { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+  );
+
+  // التنقل: الشبكة أولاً ثم الهيكل المخزن ثم صفحة عدم الاتصال (رد مضمون دائماً).
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
@@ -50,12 +62,12 @@ self.addEventListener('fetch', (event) => {
           caches.open(PAGES_CACHE).then((cache) => cache.put('/', copy));
           return res;
         })
-        .catch(() => caches.match('/')),
+        .catch(() => caches.match('/').then((hit) => hit || offlinePage())),
     );
     return;
   }
 
-  // الملفات الثابتة: stale-while-revalidate.
+  // الملفات الثابتة: stale-while-revalidate مع ضمان الرد.
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(req).then((hit) => {
@@ -67,8 +79,8 @@ self.addEventListener('fetch', (event) => {
             }
             return res;
           })
-          .catch(() => hit);
-        return hit || network;
+          .catch(() => hit || Response.error());
+        return hit || network.then((res) => res || Response.error());
       }),
     );
   }
