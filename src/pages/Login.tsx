@@ -47,6 +47,8 @@ const Login: React.FC = () => {
   // Parent code flow: phone → code (code handed over by the cashier, never shown here)
   const [otpStep, setOtpStep] = useState<'phone' | 'code'>('phone');
   const [otpCode, setOtpCode] = useState('');
+  // Fallback when SMS/OTP delivery is down: phone + phone-password via gmail-login bridge.
+  const [parentMode, setParentMode] = useState<'otp' | 'password'>('otp');
 
   const { login, requestParentOtp, verifyParentOtp, isAuthenticated } = useAuth();
   const isDataLoaded = true;
@@ -71,6 +73,10 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loginType === 'student') {
+      if (parentMode === 'password') {
+        await handleParentPassword();
+        return;
+      }
       if (otpStep === 'phone') await handleRequestOtp();
       else await handleVerifyOtp();
       return;
@@ -125,6 +131,25 @@ const Login: React.FC = () => {
         } catch {
           /* private mode — session still works */
         }
+        toast.success(t('welcome'));
+        navigateToRole(result.role);
+      } else {
+        setError(true);
+        toast.error(result.message || 'Identifiants invalides');
+      }
+    } catch {
+      toast.error('Une erreur est survenue');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleParentPassword = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const result = await login(username, password);
+      if (result.success) {
         toast.success(t('welcome'));
         navigateToRole(result.role);
       } else {
@@ -201,7 +226,7 @@ const Login: React.FC = () => {
           <div className="flex gap-2 mb-6 bg-slate-200/50 p-1.5 rounded-[1.5rem]">
             <button 
               type="button"
-              onClick={() => { setLoginType('student'); setOtpStep('phone'); setOtpCode(''); }}
+              onClick={() => { setLoginType('student'); setOtpStep('phone'); setOtpCode(''); setParentMode('otp'); }}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-[1.2rem] text-sm font-bold transition-all duration-300 ${loginType === 'student' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               {/* Student Logo SVG */}
@@ -214,7 +239,7 @@ const Login: React.FC = () => {
             </button>
             <button 
               type="button"
-              onClick={() => { setLoginType('admin'); setOtpStep('phone'); setOtpCode(''); }}
+              onClick={() => { setLoginType('admin'); setOtpStep('phone'); setOtpCode(''); setParentMode('otp'); }}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-[1.2rem] text-sm font-bold transition-all duration-300 ${loginType === 'admin' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               {/* Admin Logo SVG */}
@@ -247,9 +272,13 @@ const Login: React.FC = () => {
                   </div>
                 </div>
 
-                {loginType === 'admin' ? (
+                {loginType === 'admin' || parentMode === 'password' ? (
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">{t('password')}</Label>
+                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
+                    {loginType === 'admin'
+                      ? t('password')
+                      : (isRTL ? 'كلمة السر (نفس رقم الهاتف)' : 'Mot de passe (même numéro)')}
+                  </Label>
                   <div className="relative">
                     <Lock className={`absolute ${isRTL ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400`} />
                     <Input
@@ -262,6 +291,15 @@ const Login: React.FC = () => {
                       required
                     />
                   </div>
+                  {loginType === 'student' && (
+                    <button
+                      type="button"
+                      onClick={() => setParentMode('otp')}
+                      className="text-xs font-bold text-primary hover:underline"
+                    >
+                      {isRTL ? 'العودة للدخول بالرمز' : 'Retour au code'}
+                    </button>
+                  )}
                 </div>
                 ) : otpStep === 'code' ? (
                 <div className="space-y-2">
@@ -290,11 +328,20 @@ const Login: React.FC = () => {
                   </button>
                 </div>
                 ) : (
+                <>
                 <p className="text-xs text-slate-500 font-medium bg-slate-50 p-4 rounded-2xl border border-slate-100 leading-relaxed">
                   {isRTL
                     ? 'أدخل رقم الهاتف المسجل لدى الإدارة، ثم أدخل الرمز الذي يسلمه لك القابض.'
                     : 'Entrez le numéro enregistré, puis le code remis par la caisse.'}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setParentMode('password')}
+                  className="text-xs font-bold text-primary hover:underline mt-2"
+                >
+                  {isRTL ? 'أو الدخول بكلمة السر (نفس الرقم)' : 'Ou avec mot de passe (même numéro)'}
+                </button>
+                </>
                 )}
 
                 {error && (
@@ -320,7 +367,7 @@ const Login: React.FC = () => {
                     </span>
                   ) : (
                     <span className="flex items-center gap-2">
-                      {loginType === 'admin'
+                      {loginType === 'admin' || parentMode === 'password'
                         ? t('login_btn')
                         : otpStep === 'code'
                           ? (isRTL ? 'ادخل' : 'Entrer')
