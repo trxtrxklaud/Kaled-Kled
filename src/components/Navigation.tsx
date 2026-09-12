@@ -41,7 +41,7 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   if (canModifySystem) {
     navItems.push({ icon: School, label: t('school_header'), path: '/school-header' });
     navItems.push({ icon: Database, label: isRTL ? 'قاعدة البيانات' : 'Base de données', path: '/settings' });
-    }
+  }
 
   if (canAccessFinance) {
     navItems.push({ icon: DollarSign, label: t('finance'), path: '/finance' });
@@ -51,7 +51,22 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
   if (auth.isParent) {
     filteredNavItems = [
       { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
-      { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' }
+      { icon: Users, label: isRTL ? 'فضائي' : 'Enfants', path: '/parent' },
+      { icon: FileText, label: isRTL ? 'دروس' : t('homework'), path: '/homework' },
+      { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' },
+      { icon: Trophy, label: isRTL ? 'النتائج' : 'Résultats', path: '/results' },
+      { icon: BookOpen, label: t('schedules'), path: '/schedules' },
+      { icon: MessageCircle, label: t('news_feed'), path: '/newsfeed' },
+    ];
+  } else if (auth.isTeacher) {
+    filteredNavItems = [
+      { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
+      { icon: Users, label: t('students'), path: '/students' },
+      { icon: FileText, label: t('homework'), path: '/homework' },
+      { icon: MessageSquare, label: t('communication'), path: '/communication' },
+      { icon: Trophy, label: isRTL ? 'النتائج' : 'Résultats', path: '/results' },
+      { icon: BookOpen, label: t('schedules'), path: '/schedules' },
+      { icon: MessageCircle, label: t('news_feed'), path: '/newsfeed' },
     ];
   }
 
@@ -95,38 +110,39 @@ const Navigation: React.FC<NavigationProps> = ({ isSidebar = false }) => {
     );
   }
 
-  // ——— Mobile: max 4 labeled primaries + a "More" bottom sheet (no new routes).
-  // Primary paths are curated from VERIFIED route guards in App.tsx so every
-  // button always lands on an allowed page.
+  // ——— Mobile: max 4 labeled primaries + a "More" bottom sheet.
   const byPath = new Map(filteredNavItems.map((i) => [i.path, i]));
-  const pick = (path: string): NavEntry | null => byPath.get(path) || null;
   let primary: NavEntry[] = [];
   if (auth.isParent) {
     primary = [
-      byPath.get('/')!,
-      { icon: Users, label: isRTL ? 'فضائي' : 'Enfants', path: '/parent' },
-      byPath.get('/homework')!,
-      byPath.get('/notifications')!,
+      byPath.get('/') || { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
+      byPath.get('/parent') || { icon: Users, label: isRTL ? 'فضائي' : 'Enfants', path: '/parent' },
+      byPath.get('/homework') || { icon: FileText, label: isRTL ? 'دروس' : t('homework'), path: '/homework' },
+      byPath.get('/notifications') || { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' },
     ];
   } else if (auth.isTeacher) {
     primary = [
-      byPath.get('/')!,
-      byPath.get('/students')!,
-      byPath.get('/homework')!,
-      byPath.get('/communication')!,
+      byPath.get('/') || { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
+      byPath.get('/students') || { icon: Users, label: t('students'), path: '/students' },
+      byPath.get('/homework') || { icon: FileText, label: t('homework'), path: '/homework' },
+      byPath.get('/communication') || { icon: MessageSquare, label: t('communication'), path: '/communication' },
     ];
   } else {
     primary = [
-      byPath.get('/')!,
-      byPath.get('/students')!,
-      ...(canAccessFinance
-        ? [{ icon: DollarSign, label: t('finance'), path: '/finance' } as NavEntry]
-        : [byPath.get('/communication')!]),
-      ...(auth.isAdmin
-        ? [{ icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' } as NavEntry]
-        : [byPath.get('/homework')!]),
+      byPath.get('/') || { icon: LayoutDashboard, label: t('dashboard'), path: '/' },
+      byPath.get('/students') || { icon: Users, label: t('students'), path: '/students' },
+      canAccessFinance
+        ? { icon: DollarSign, label: t('finance'), path: '/finance' }
+        : byPath.get('/communication') || { icon: MessageSquare, label: t('communication'), path: '/communication' },
+      auth.isAdmin
+        ? { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications' }
+        : byPath.get('/homework') || { icon: FileText, label: t('homework'), path: '/homework' },
     ];
   }
+
+  // Guarantee no undefined entry exists in primary
+  primary = primary.filter(Boolean);
+
   const primaryPaths = new Set(primary.map((p) => p.path));
   const rest = filteredNavItems.filter((i) => !primaryPaths.has(i.path));
 

@@ -3,15 +3,10 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import Navigation from './Navigation';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Globe, LogOut, Printer, School, BookOpen } from 'lucide-react';
 import { Button } from './ui/button';
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from './ui/dropdown-menu';
+import { Globe, LogOut, Printer, School, BookOpen } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { AnimatePresence, motion } from 'framer-motion';
 import ErrorBoundary from './ErrorBoundary';
 import { triggerPrint, getAvatarUrl, FALLBACK_AVATAR } from '../lib/utils';
 import { useStudentStore } from '../stores/studentStore';
@@ -38,13 +33,25 @@ const Layout: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Type cast to access childrenIds safely since it's only on Parent
-      const childrenIds = 'childrenIds' in user ? (user as any).childrenIds : [];
-      fetchStudents(user.role, assignedClasses || [], childrenIds);
-      fetchEmployees();
-      fetchSchool();
-      fetchSettings();
-      fetchCommunication();
+      const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+      const isTeacher = user.role === 'teacher';
+
+      if (isStaffOrAdmin) {
+        const childrenIds = 'childrenIds' in user ? (user as any).childrenIds : [];
+        fetchStudents(user.role, assignedClasses || [], childrenIds);
+        fetchEmployees();
+        fetchSchool();
+        fetchSettings();
+        fetchCommunication();
+      } else if (isTeacher) {
+        fetchStudents(user.role, assignedClasses || [], []);
+        fetchSchool();
+        fetchCommunication();
+      } else {
+        // Parent: lightweight setup, only school notices and communication
+        fetchSchool();
+        fetchCommunication();
+      }
     } else {
       clearStudents();
       clearEmployees();
@@ -53,7 +60,7 @@ const Layout: React.FC = () => {
       clearCommunication();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id, fetchStudents, clearStudents, fetchEmployees, clearEmployees, fetchSchool, clearSchool, fetchSettings, clearSettings, fetchCommunication, clearCommunication]);
+  }, [isAuthenticated, user?.id, user?.role, fetchStudents, clearStudents, fetchEmployees, clearEmployees, fetchSchool, clearSchool, fetchSettings, clearSettings, fetchCommunication, clearCommunication]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -75,8 +82,8 @@ const Layout: React.FC = () => {
              </svg>
           </div>
           <div>
-            <h1 className="font-bold text-base leading-tight tracking-tight text-card-foreground">المدرسة الابتدائية الخاصة العناية</h1>
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mt-0.5">{user?.role === 'parent' ? 'فضاء التلاميذ و الأولياء' : 'الإدارة المدرسية'}</p>
+            <h1 className="font-black text-base text-card-foreground tracking-tight leading-tight">المدرسة الابتدائية الخاصة العناية</h1>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-0.5">Al Inaya School</p>
           </div>
         </div>
         
@@ -207,7 +214,7 @@ const Layout: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className="p-4 lg:p-10 pb-32 lg:pb-12 print:p-0 print:m-0"
+                className="p-0 sm:p-2 lg:p-10 pb-28 lg:pb-12 print:p-0 print:m-0"
               >
                 <Outlet />
               </motion.div>

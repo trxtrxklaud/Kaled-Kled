@@ -287,9 +287,14 @@
   }
   .main-content {
     flex: 1;
-    padding: 24px;
+    padding: 10px 10px 24px;
     background: var(--color-surface-alt);
-    min-height: calc(100vh - 64px);
+    min-height: calc(100dvh - 64px);
+  }
+  @media (min-width: 1024px) {
+    .main-content {
+      padding: 24px;
+    }
   }
 }
 
@@ -317,15 +322,24 @@ input[type=number] {
 }
 html {
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 body {
   overscroll-behavior-y: contain;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 @media (max-width: 767px) {
   /* iOS auto-zooms any field under 16px — unify to prevent screen jumps */
   input,
   select,
   textarea {
-    font-size: 16px;
+    font-size: 16px !important;
+  }
+  /* Keep Arabic labels and badges legible on phone screens */
+  .text-\[9px\], .text-\[10px\] {
+    font-size: 11px !important;
   }
 }

@@ -45,14 +45,14 @@ export const ParentPortal: React.FC = () => {
   const notifications = useNotificationStore(state => state.notifications);
   const { t, isRTL } = useLanguage();
 
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(students[0]?.id || null);
+
   // Effect to auto-select first child when students load
   React.useEffect(() => {
     if (students.length > 0 && !selectedChildId) {
       setSelectedChildId(students[0].id);
     }
   }, [students, selectedChildId]);
-
-  const [selectedChildId, setSelectedChildId] = useState<string | null>(students[0]?.id || null);
 
   // Parent → school notes form state (handler lives below, next to unreadNotifs)
   const addMessage = useCommunicationStore(state => state.addMessage);

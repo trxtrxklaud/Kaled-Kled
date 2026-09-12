@@ -5,11 +5,11 @@ import { requireAuth, createSession, destroySession } from './middleware.js';
 /**
  * Phase 2 — Laravel-backed sessions. No Firebase Auth, no browser tokens.
  *
- * - POST /login            staff/admin/teacher via platform gmail-login.
- * - POST /login/parent/request-otp + verify-otp   parents via platform OTP.
+ * - POST /login                                  staff/admin/teacher via platform gmail-login.
+ * - POST /parent/request-otp (+ /login/parent/…) parents via platform OTP.
+ * - POST /parent/verify-otp (+ /login/parent/…)  verify and mint session.
  * - The platform access_token NEVER leaves this server: we verify with it,
  *   then mint our own short session JWT (httpOnly cookie) carrying {id, role, name}.
- * - Removed in Phase 1: POST /sync-session (minted JWTs from unverified client claims).
  */
 
 const router = Router();
@@ -18,9 +18,10 @@ const BASE = (process.env.PROVIDENCE_API_BASE || 'https://laprovidencemfondation
 const TIMEOUT_MS = Number(process.env.PROVIDENCE_TIMEOUT_MS || 20000);
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
+const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 function needJwtSecret(res: Response): string | null {
   if (!JWT_SECRET) {
-    // middleware.ts already crashes production boot without it; this guards tests/dev misuse.
     res.status(503).json({ success: false, message: 'Server session signing is not configured.' });
     return null;
   }
@@ -33,7 +34,11 @@ async function platformPost(path: string, body: Record<string, unknown>): Promis
   try {
     const res = await fetch(BASE + path, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': DEFAULT_UA,
+      },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
@@ -86,8 +91,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const payload = (envelope.data ?? {}) as Record<string, unknown>;
     const user = (payload.user ?? {}) as Record<string, unknown>;
     if (status !== 200 || !envelope.success || !user.id) {
-      // Anti-enumeration: unknown identifier and wrong secret return the SAME message,
-      // otherwise phone numbers could be probed for registered accounts.
       const uniform = status === 401 ? 'بيانات الدخول غير صحيحة.' : null;
       res.status(status === 200 ? 401 : status).json({
         success: false,
@@ -121,8 +124,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// ——— Parent OTP login via platform ———
-router.post('/login/parent/request-otp', async (req: Request, res: Response): Promise<void> => {
+// ——— Parent OTP handlers (registered on both /parent/* and /login/parent/* for client compatibility) ———
+const handleRequestOtp = async (req: Request, res: Response): Promise<void> => {
   const phone = asText(req.body?.phone);
   if (phone === '') {
     res.status(400).json({ success: false, message: 'phone is required.' });
@@ -131,20 +134,17 @@ router.post('/login/parent/request-otp', async (req: Request, res: Response): Pr
   try {
     const { status, data } = await platformPost('/mobile/parent/request-otp', { phone });
     const envelope = (data ?? {}) as { message?: string };
-    // SECURITY: never forward dev_code (manual channel). Its presence would let
-    // anyone oracle which phones are registered. The cashier hands the code over
-    // in person; the browser only gets the uniform message.
     res.status(status).json({
       success: status === 200,
-      message: asText(envelope.message) || 'OTP request processed.',
+      message: asText(envelope.message) || 'إن كان الرقم مسجّلاً مع تلميذ، فسيصلك رمز التحقّق.',
     });
   } catch (err: unknown) {
     console.error('Parent OTP request proxy error:', (err as Error)?.message || err);
     res.status(502).json({ success: false, message: 'Cannot reach the platform.' });
   }
-});
+};
 
-router.post('/login/parent/verify-otp', async (req: Request, res: Response): Promise<void> => {
+const handleVerifyOtp = async (req: Request, res: Response): Promise<void> => {
   const secret = needJwtSecret(res);
   if (!secret) return;
   const phone = asText(req.body?.phone);
@@ -155,12 +155,12 @@ router.post('/login/parent/verify-otp', async (req: Request, res: Response): Pro
   }
   try {
     const { status, data } = await platformPost('/mobile/parent/verify-otp', { phone, code });
-    const envelope = (data ?? {}) as { message?: string; user?: unknown };
+    const envelope = (data ?? {}) as { message?: string; user?: unknown; access_token?: string };
     const user = (envelope.user ?? {}) as Record<string, unknown>;
     if (status !== 200 || !user.id) {
       res.status(status === 200 ? 401 : status).json({
         success: false,
-        message: asText(envelope.message) || 'Invalid or expired code.',
+        message: asText(envelope.message) || 'الرمز غير صحيح أو منتهي الصلاحية.',
       });
       return;
     }
@@ -169,7 +169,7 @@ router.post('/login/parent/verify-otp', async (req: Request, res: Response): Pro
       role: 'parent',
       name: `${asText(user.first_name)} ${asText(user.last_name)}`.trim() || asText(user.phone),
       username: asText(user.email) || asText(user.phone),
-    }, asText((envelope as Record<string, unknown>).access_token));
+    }, asText(envelope.access_token));
     res.json({
       success: true,
       user: {
@@ -187,7 +187,13 @@ router.post('/login/parent/verify-otp', async (req: Request, res: Response): Pro
     console.error('Parent OTP verify proxy error:', (err as Error)?.message || err);
     res.status(502).json({ success: false, message: 'Cannot reach the platform.' });
   }
-});
+};
+
+router.post('/login/parent/request-otp', handleRequestOtp);
+router.post('/parent/request-otp', handleRequestOtp);
+
+router.post('/login/parent/verify-otp', handleVerifyOtp);
+router.post('/parent/verify-otp', handleVerifyOtp);
 
 router.post('/logout', (req: Request, res: Response) => {
   try {
